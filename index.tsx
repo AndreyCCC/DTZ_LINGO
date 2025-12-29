@@ -392,10 +392,24 @@ function App() {
              return;
         }
 
+        // --- Custom Logic for System Prompt based on Module ---
+        let systemPrompt = "Du bist DTZ Prüfer. Antworte kurz (max 2 Sätze). Stelle eine Frage.";
+        
+        if (state.module === 'bild') {
+          if (state.turnCount === 0) {
+            // First turn: User just described the picture. Ask about a DETAIL in the picture.
+            systemPrompt = "Du bist DTZ Prüfer (Teil 2: Bildbeschreibung). Der Teilnehmer hat das Bild beschrieben. Stelle nun EINE konkrete Frage zu einem Detail, das man auf dem Bild sehen könnte. Sei freundlich aber prüfungsorientiert.";
+          } else if (state.turnCount === 1) {
+            // Second turn: User answered detail question. Ask about EXPERIENCE/FEELINGS.
+            systemPrompt = "Du bist DTZ Prüfer (Teil 2: Bildbeschreibung). Stelle nun EINE Frage zu den persönlichen Erfahrungen, Gefühlen oder der Meinung des Teilnehmers zum Thema des Bildes.";
+          }
+        }
+        // -----------------------------------------------------
+
         const chat = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [
-                { role: "system", content: "Du bist DTZ Prüfer. Antworte kurz (max 2 Sätze). Stelle eine Frage." },
+                { role: "system", content: systemPrompt },
                 ...state.history.map(h => ({ role: h.role, content: h.text })),
                 { role: "user", content: text }
             ]
@@ -406,7 +420,8 @@ function App() {
 
         const newHistory: Message[] = [...state.history, { role: 'user', text }, { role: 'assistant', text: aiText }];
 
-        if (state.turnCount >= 4) {
+        // End exam after 2 AI questions (Total turns: 0 -> 1 -> 2 (End))
+        if (state.turnCount >= 2) {
           setState(prev => ({ ...prev, history: newHistory, step: 'result', grading: undefined }));
           generateGrading(newHistory);
         } else {
@@ -474,7 +489,7 @@ function App() {
         <header className="dtz-header">
             {state.step !== 'menu' && <button className="back-btn" onClick={stopExam}><ArrowLeftIcon /></button>}
             <div className="progress-container">
-                <div className="progress-bar" style={{ width: state.step === 'exam' ? `${(state.turnCount / 5) * 100}%` : '100%' }}></div>
+                <div className="progress-bar" style={{ width: state.step === 'exam' ? `${(state.turnCount / 2) * 100}%` : '100%' }}></div>
             </div>
             {state.step === 'exam' ? <button className="finish-btn" onClick={stopExam}>X</button> : 
                 (user && <button className="finish-btn" onClick={() => { if(user.id === 'guest') { setUser(null); setState(s=>({...s, step:'auth'})); } else { supabase?.auth.signOut(); } }}>LOGOUT</button>)}
