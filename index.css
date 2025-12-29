@@ -76,6 +76,9 @@ body, html { margin: 0; padding: 0; background: var(--duo-bg); color: var(--duo-
 
 .primary-btn { width: 100%; background: var(--duo-blue); border: none; border-bottom: 5px solid var(--duo-blue-dark); color: white; padding: 16px; border-radius: 16px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
 .primary-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+.secondary-btn { width: 100%; background: transparent; border: 2px solid var(--duo-border); color: var(--duo-text-sec); padding: 14px; border-radius: 16px; font-weight: bold; cursor: pointer; text-transform: uppercase; margin-top: 10px; }
+.secondary-btn:hover { background: rgba(255,255,255,0.05); color: white; border-color: var(--duo-text-sec); }
+
 .error-toast { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: var(--duo-red); color: white; padding: 12px 24px; border-radius: 12px; z-index: 1000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); cursor: pointer; font-size: 0.9rem; }
 @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(0.97); } 100% { transform: scale(1); } }
 .spin-icon { animation: rotate 1s linear infinite; }

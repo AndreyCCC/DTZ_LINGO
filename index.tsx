@@ -75,7 +75,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
 }
 
 // --- Auth Component ---
-const AuthScreen = ({ onLogin }: { onLogin: (user: User) => void }) => {
+const AuthScreen = ({ onLogin, onGuest }: { onLogin: (user: User) => void, onGuest: () => void }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
@@ -98,7 +98,7 @@ const AuthScreen = ({ onLogin }: { onLogin: (user: User) => void }) => {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         if (data.user) {
-            setMsg("Registrierung erfolgreich! Bitte einloggen.");
+            setMsg("Registrierung erfolgreich! Bitte E-Mails prüfen.");
             setIsSignUp(false);
         }
       } else {
@@ -137,6 +137,11 @@ const AuthScreen = ({ onLogin }: { onLogin: (user: User) => void }) => {
             {loading ? 'Laden...' : (isSignUp ? 'Registrieren' : 'Einloggen')}
           </button>
         </form>
+        
+        <button type="button" className="secondary-btn" onClick={onGuest}>
+            Als Gast fortfahren
+        </button>
+
         {msg && <p className="auth-msg">{msg}</p>}
         <p className="auth-switch">
           {isSignUp ? 'Schon ein Konto?' : 'Noch kein Konto?'} 
@@ -188,15 +193,25 @@ function App() {
         });
 
         return () => subscription.unsubscribe();
-    } else {
-        // Fallback for development without Supabase keys
-        console.warn("No Supabase client found. Running in demo mode.");
-        setState(s => ({ ...s, step: 'menu' })); // Automatically go to menu in demo mode
     }
   }, []);
 
+  const handleGuestLogin = () => {
+      // Mock user for guest mode
+      const guestUser = { 
+          id: 'guest', 
+          email: 'gast@demo.de',
+          app_metadata: {},
+          user_metadata: {},
+          aud: 'authenticated',
+          created_at: new Date().toISOString()
+      } as User;
+      setUser(guestUser);
+      setState(s => ({ ...s, step: 'menu' }));
+  };
+
   const fetchStats = async (userId: string) => {
-      if (!supabase) return;
+      if (!supabase || userId === 'guest') return;
       const { data, error } = await supabase
         .from('exam_results')
         .select('grade')
@@ -206,13 +221,13 @@ function App() {
           setStats({
               totalExams: data.length,
               lastGrade: data.length > 0 ? data[data.length - 1].grade : '-',
-              modulesTaken: data.length // упрощение для примера
+              modulesTaken: data.length
           });
       }
   };
 
   const saveResult = async (result: GradingResult, module: ExamModule) => {
-      if (!supabase || !user) return;
+      if (!supabase || !user || user.id === 'guest') return;
       
       await supabase.from('exam_results').insert({
           user_id: user.id,
@@ -225,7 +240,6 @@ function App() {
 
   // OpenAI Client initialization
   const getOpenAI = () => {
-    // Используем правильный импорт для Vite: VITE_OPENAI_API_KEY
     const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
     if (!apiKey) throw new Error("OpenAI API Key fehlt! Prüfen Sie .env oder Vercel Settings.");
     return new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
@@ -353,7 +367,7 @@ function App() {
         
         if (isExamActiveRef.current) {
             setState(prev => ({ ...prev, grading: result }));
-            // Save to database
+            // Save to database only if not guest
             saveResult(result, state.module);
         }
     } catch (e) {
@@ -454,7 +468,7 @@ function App() {
     <div className="dtz-app">
       <DottedGlowBackground />
       {state.step === 'auth' ? (
-        <AuthScreen onLogin={(u) => setUser(u)} />
+        <AuthScreen onLogin={(u) => setUser(u)} onGuest={handleGuestLogin} />
       ) : (
         <>
         <header className="dtz-header">
@@ -463,7 +477,7 @@ function App() {
                 <div className="progress-bar" style={{ width: state.step === 'exam' ? `${(state.turnCount / 5) * 100}%` : '100%' }}></div>
             </div>
             {state.step === 'exam' ? <button className="finish-btn" onClick={stopExam}>X</button> : 
-                (user && <button className="finish-btn" onClick={() => supabase?.auth.signOut()}>LOGOUT</button>)}
+                (user && <button className="finish-btn" onClick={() => { if(user.id === 'guest') { setUser(null); setState(s=>({...s, step:'auth'})); } else { supabase?.auth.signOut(); } }}>LOGOUT</button>)}
         </header>
 
         <main className="dtz-main">
