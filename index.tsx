@@ -191,7 +191,7 @@ function App() {
     } else {
         // Fallback for development without Supabase keys
         console.warn("No Supabase client found. Running in demo mode.");
-        // setState(s => ({ ...s, step: 'menu' })); // Uncomment to bypass auth for dev
+        setState(s => ({ ...s, step: 'menu' })); // Automatically go to menu in demo mode
     }
   }, []);
 
@@ -463,7 +463,7 @@ function App() {
                 <div className="progress-bar" style={{ width: state.step === 'exam' ? `${(state.turnCount / 5) * 100}%` : '100%' }}></div>
             </div>
             {state.step === 'exam' ? <button className="finish-btn" onClick={stopExam}>X</button> : 
-                <button className="finish-btn" onClick={() => supabase?.auth.signOut()}>LOGOUT</button>}
+                (user && <button className="finish-btn" onClick={() => supabase?.auth.signOut()}>LOGOUT</button>)}
         </header>
 
         <main className="dtz-main">
@@ -473,7 +473,7 @@ function App() {
             <div className="menu-view">
                 <div className="welcome">
                     <div className="avatar-placeholder">{stats.lastGrade === '-' ? <SparklesIcon /> : stats.lastGrade}</div>
-                    <h1>Hallo, {user?.email?.split('@')[0]}</h1>
+                    <h1>Hallo, {user?.email ? user.email.split('@')[0] : 'Gast'}</h1>
                     <div className="stats-row">
                         <div className="stat-pill">📝 {stats.totalExams} Prüfungen</div>
                         <div className="stat-pill">⭐ Letzte Note: {stats.lastGrade}</div>
