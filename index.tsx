@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Component, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 import OpenAI from 'openai';
 import { createClient, User } from '@supabase/supabase-js';
@@ -53,12 +53,28 @@ interface UserStats {
 }
 
 // --- Error Boundary ---
-class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
-  constructor(props: any) {
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };
   }
-  static getDerivedStateFromError() { return { hasError: true }; }
+
+  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
   render() {
     if (this.state.hasError) {
       return (
@@ -175,10 +191,15 @@ function App() {
 
   useEffect(() => {
     if (process.env.OPENAI_API_KEY) {
-        openaiRef.current = new OpenAI({
-            apiKey: process.env.OPENAI_API_KEY,
-            dangerouslyAllowBrowser: true // Required for client-side use
-        });
+        try {
+            openaiRef.current = new OpenAI({
+                apiKey: process.env.OPENAI_API_KEY,
+                dangerouslyAllowBrowser: true // Required for client-side use
+            });
+            console.log("OpenAI initialized");
+        } catch (e) {
+            console.error("OpenAI init error", e);
+        }
     } else {
         console.error("OPENAI_API_KEY is missing");
     }
@@ -273,7 +294,11 @@ function App() {
   };
 
   const speakText = async (text: string) => {
-    if (!isExamActiveRef.current || !openaiRef.current) return;
+    console.log("Speaking text:", text);
+    if (!isExamActiveRef.current || !openaiRef.current) {
+        console.warn("Cannot speak: exam not active or openai not ready");
+        return;
+    }
     stopAudio();
     try {
       const mp3 = await openaiRef.current.audio.speech.create({
@@ -292,14 +317,16 @@ function App() {
       
       if (isExamActiveRef.current) {
           await audio.play();
+          console.log("Audio started");
       }
     } catch (e: any) {
-      console.error(e);
+      console.error("TTS Error:", e);
       speakFallback(text);
     }
   };
 
   const speakFallback = (text: string) => {
+    console.log("Using fallback TTS");
     if (!isExamActiveRef.current) return;
     stopAudio();
     if (!('speechSynthesis' in window)) return;
