@@ -129,6 +129,20 @@ body, html {
 .mic-btn { width: 100%; background: var(--duo-green); border: none; border-bottom: 5px solid var(--duo-green-dark); color: white; padding: 18px; border-radius: 16px; font-weight: bold; cursor: pointer; font-size: 1rem; text-transform: uppercase; letter-spacing: 1px; }
 .mic-btn.recording { background: var(--duo-red); border-bottom-color: #D33131; animation: pulse 1.5s infinite; }
 
+/* Writing Module */
+.writing-view { width: 100%; display: flex; flex-direction: column; gap: 15px; height: 100%; flex: 1; }
+.task-box { background: var(--duo-card); border: 2px solid var(--duo-border); border-radius: 16px; padding: 20px; }
+.task-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 10px; }
+.task-header h3 { margin: 0; font-size: 1.1rem; color: var(--duo-blue); }
+.timer-display { font-family: monospace; font-size: 1.2rem; background: rgba(0,0,0,0.3); padding: 5px 10px; border-radius: 8px; font-weight: bold; color: var(--duo-text-sec); border: 1px solid var(--duo-border); white-space: nowrap; }
+.task-content p { margin: 0 0 8px; font-size: 0.95rem; line-height: 1.4; white-space: pre-wrap; }
+.writing-area-container { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.writing-input { flex: 1; min-height: 250px; background: #18252B; border: 2px solid var(--duo-border); border-radius: 16px; padding: 15px; color: white; font-family: 'Inter', sans-serif; font-size: 1rem; line-height: 1.5; resize: none; width: 100%; outline: none; }
+.writing-input:focus { border-color: var(--duo-blue); }
+.writing-footer { display: flex; justify-content: space-between; align-items: center; color: var(--duo-text-sec); font-size: 0.9rem; }
+.primary-btn.small { width: auto; padding: 10px 24px; margin: 0; }
+
+
 /* Result */
 .result-view { text-align: center; width: 100%; padding-bottom: 40px; }
 .result-loading { padding: 40px; color: var(--duo-text-sec); display: flex; flex-direction: column; align-items: center; gap: 20px; }

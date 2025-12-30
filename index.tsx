@@ -18,8 +18,27 @@ const EXAM_IMAGES = [
   "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=800&q=80",
 ];
 
+const WRITING_PROMPTS = [
+  {
+    topic: "Krankmeldung Kind",
+    text: "Ihr Sohn kann morgen nicht in die Schule gehen, weil er krank ist. Schreiben Sie eine E-Mail an die Klassenlehrerin, Frau Müller.\n\nSchreiben Sie etwas zu folgenden Punkten:\n1. Grund für Ihr Schreiben\n2. Wie lange er zu Hause bleiben muss\n3. Fragen Sie nach den Hausaufgaben"
+  },
+  {
+    topic: "Wohnungsproblem",
+    text: "In Ihrer Wohnung funktioniert die Heizung nicht. Es ist sehr kalt. Sie haben Ihren Vermieter, Herrn Schneider, schon angerufen, aber nicht erreicht. Schreiben Sie eine E-Mail.\n\nSchreiben Sie etwas zu folgenden Punkten:\n1. Problem beschreiben\n2. Was Sie schon gemacht haben (Anruf)\n3. Termin für Reparatur bitten"
+  },
+  {
+    topic: "Einladung Antwort",
+    text: "Ihr neuer Nachbar hat Sie zu seinem Geburtstag am Samstag eingeladen. Schreiben Sie ihm einen Brief.\n\nSchreiben Sie etwas zu folgenden Punkten:\n1. Danken Sie für die Einladung\n2. Sagen Sie zu (dass Sie kommen)\n3. Fragen Sie, ob Sie etwas mitbringen sollen (Salat, Getränke?)"
+  },
+  {
+    topic: "Jobbewerbung",
+    text: "Sie haben eine Anzeige gelesen: Die Firma 'ABC Logistik' sucht Fahrer. Schreiben Sie eine Bewerbung.\n\nSchreiben Sie etwas zu folgenden Punkten:\n1. Warum Sie schreiben\n2. Ihre Erfahrung (Führerschein, frühere Jobs)\n3. Wann Sie anfangen können"
+  }
+];
+
 // --- Types ---
-type ExamModule = 'vorstellung' | 'bild' | 'planung' | null;
+type ExamModule = 'vorstellung' | 'bild' | 'planung' | 'schreiben' | null;
 
 interface Message {
   role: 'user' | 'assistant';
@@ -44,6 +63,10 @@ interface ExamState {
   turnCount: number;
   currentImage?: string;
   grading?: GradingResult;
+  // Writing specific
+  writingTask?: { topic: string; text: string };
+  writingInput?: string;
+  timeLeft?: number; // seconds
 }
 
 interface UserStats {
@@ -231,6 +254,17 @@ function App() {
     }
   }, []);
 
+  // Timer logic for Writing module
+  useEffect(() => {
+    let interval: any;
+    if (state.module === 'schreiben' && state.step === 'exam' && state.timeLeft && state.timeLeft > 0) {
+      interval = setInterval(() => {
+        setState(prev => ({ ...prev, timeLeft: (prev.timeLeft || 0) - 1 }));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [state.module, state.step, state.timeLeft]);
+
   const handleGuestLogin = () => {
       const guestUser = { 
           id: 'guest', 
@@ -294,6 +328,9 @@ function App() {
   };
 
   const speakText = async (text: string) => {
+    // No speaking for writing module
+    if (state.module === 'schreiben') return;
+
     console.log("Speaking text:", text);
     if (!isExamActiveRef.current || !openaiRef.current) {
         console.warn("Cannot speak: exam not active or openai not ready");
@@ -326,6 +363,7 @@ function App() {
   };
 
   const speakFallback = (text: string) => {
+    if (state.module === 'schreiben') return;
     console.log("Using fallback TTS");
     if (!isExamActiveRef.current) return;
     stopAudio();
@@ -349,6 +387,24 @@ function App() {
     setError(null);
     isExamActiveRef.current = true;
     
+    // Writing Module Logic
+    if (module === 'schreiben') {
+        const prompt = WRITING_PROMPTS[Math.floor(Math.random() * WRITING_PROMPTS.length)];
+        setState({
+            module,
+            step: 'exam',
+            history: [],
+            turnCount: 0,
+            grading: undefined,
+            writingTask: prompt,
+            writingInput: '',
+            timeLeft: 30 * 60 // 30 minutes in seconds
+        });
+        setIsProcessing(false);
+        return;
+    }
+
+    // Oral Modules Logic
     let initialGreeting = "";
     let currentImage = "";
 
@@ -380,21 +436,39 @@ function App() {
     }
   };
 
-  const generateGrading = async (history: Message[]) => {
+  const generateGrading = async (history: Message[], writtenText?: string) => {
     if (!openaiRef.current) return;
+    setIsProcessing(true);
     try {
-        const transcript = history.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
+        let systemPrompt = "";
+        let userContent = "";
+
+        if (state.module === 'schreiben' && writtenText) {
+            const task = state.writingTask?.text || "Unbekannte Aufgabe";
+            systemPrompt = "Du bist ein strenger DTZ Prüfer für den schriftlichen Teil (Brief/E-Mail). Bewerte den Text. Achte auf: 1. Erfüllung der 3 Leitpunkte (sehr wichtig). 2. Grammatik und Wortschatz (B1 Niveau). 3. Kommunikative Gestaltung (Anrede, Grußformel, Logik).";
+            userContent = `Aufgabe: ${task}\n\nSchüler-Text:\n${writtenText}\n\nFormat JSON:\n{
+                "grade": "A1" | "A2" | "B1" | "Unter A1",
+                "reasoning": "Kurzes Feedback (Deutsch)",
+                "tips": ["Tipp 1", "Tipp 2"],
+                "mistakes": [{"original": "Fehlerhafter Satzteil", "correction": "Korrektur", "explanation": "Erklärung"}]
+            }`;
+        } else {
+             // Oral Grading
+             const transcript = history.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
+             systemPrompt = "Du bist ein strenger DTZ Prüfer (Mündlich). Analysiere das Transkript.";
+             userContent = `Analysiere:\n${transcript}\n\nFormat JSON:\n{
+                "grade": "A1" | "A2" | "B1" | "Unter A1",
+                "reasoning": "string",
+                "tips": ["string"],
+                "mistakes": [{"original": "string", "correction": "string", "explanation": "string"}]
+            }`;
+        }
         
         const completion = await openaiRef.current.chat.completions.create({
-            model: "gpt-4o-mini", // Использование дешевой модели
+            model: "gpt-4o-mini",
             messages: [
-                { role: "system", content: "Du bist ein strenger DTZ Prüfer. Analysiere das Transkript und gib das Ergebnis als JSON zurück." },
-                { role: "user", content: `Analysiere:\n${transcript}\n\nFormat JSON:\n{
-                    "grade": "A1" | "A2" | "B1" | "Unter A1",
-                    "reasoning": "string",
-                    "tips": ["string"],
-                    "mistakes": [{"original": "string", "correction": "string", "explanation": "string"}]
-                }`}
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userContent }
             ],
             response_format: { type: "json_object" }
         });
@@ -403,11 +477,14 @@ function App() {
         const result = JSON.parse(content || "{}") as GradingResult;
         
         if (isExamActiveRef.current) {
-            setState(prev => ({ ...prev, grading: result }));
+            setState(prev => ({ ...prev, grading: result, step: 'result' }));
             saveResult(result, state.module);
         }
     } catch (e) {
         console.error(e);
+        setError("Fehler bei der Auswertung.");
+    } finally {
+        setIsProcessing(false);
     }
   };
 
@@ -446,7 +523,7 @@ function App() {
 
         // 2. Chat (GPT-4o-mini)
         const completion = await openaiRef.current.chat.completions.create({
-            model: "gpt-4o-mini", // Использование дешевой модели
+            model: "gpt-4o-mini", 
             messages: [
                 { role: "system", content: systemPrompt },
                 ...state.history.map(m => ({ role: m.role, content: m.text })),
@@ -460,7 +537,7 @@ function App() {
         const newHistory: Message[] = [...state.history, { role: 'user', text }, { role: 'assistant', text: aiText }];
 
         if (state.turnCount >= 2) {
-          setState(prev => ({ ...prev, history: newHistory, step: 'result', grading: undefined }));
+          // Finish oral exam
           generateGrading(newHistory);
         } else {
           setState(prev => ({ ...prev, history: newHistory, turnCount: prev.turnCount + 1 }));
@@ -495,6 +572,12 @@ function App() {
     }
   };
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
   // --- Views ---
   const ResultView = ({ grading }: { grading?: GradingResult }) => {
       if (!grading) return <div className="result-loading"><ThinkingIcon /><p>Auswertung läuft...</p></div>;
@@ -506,10 +589,19 @@ function App() {
                   <span className="value">{grading.grade}</span>
               </div>
               <div className="result-section"><h3>Begründung</h3><p>{grading.reasoning}</p></div>
+              {grading.tips && grading.tips.length > 0 && (
+                 <div className="result-section"><h3>Tipps</h3>
+                    <ul style={{paddingLeft: '20px', margin: 0}}>{grading.tips.map((t, i) => <li key={i}>{t}</li>)}</ul>
+                 </div>
+              )}
               {grading.mistakes?.length > 0 && (
                   <div className="result-section"><h3>Fehler</h3>
                       <div className="mistakes-list">{grading.mistakes.map((m, i) => (
-                          <div key={i} className="mistake-item"><div className="mistake-orig">❌ {m.original}</div><div className="mistake-corr">✅ {m.correction}</div></div>
+                          <div key={i} className="mistake-item">
+                              <div className="mistake-orig">❌ {m.original}</div>
+                              <div className="mistake-corr">✅ {m.correction}</div>
+                              <div style={{fontSize:'0.85rem', opacity:0.8}}>{m.explanation}</div>
+                          </div>
                       ))}</div>
                   </div>
               )}
@@ -527,9 +619,13 @@ function App() {
         <header className="dtz-header">
             {state.step !== 'menu' && <button className="back-btn" onClick={stopExam}><ArrowLeftIcon /></button>}
             <div className="progress-container">
-                <div className="progress-bar" style={{ width: state.step === 'exam' ? `${(state.turnCount / 2) * 100}%` : '100%' }}></div>
+                {state.module === 'schreiben' ? (
+                     <div className="progress-bar" style={{ width: `${((state.timeLeft || 0) / 1800) * 100}%`, background: (state.timeLeft || 0) < 300 ? '#FF4B4B' : '#58CC02' }}></div>
+                ) : (
+                    <div className="progress-bar" style={{ width: state.step === 'exam' ? `${(state.turnCount / 2) * 100}%` : '100%' }}></div>
+                )}
             </div>
-            {state.step === 'exam' ? <button className="finish-btn" onClick={stopExam}>X</button> : 
+            {state.step === 'exam' ? <button className="finish-btn" onClick={stopExam}>ABBRUCH</button> : 
                 (user && <button className="finish-btn" onClick={() => { if(user.id === 'guest') { setUser(null); setState(s=>({...s, step:'auth'})); } else { supabase?.auth.signOut(); } }}>LOGOUT</button>)}
         </header>
 
@@ -547,11 +643,18 @@ function App() {
                     </div>
                 </div>
                 <div className="module-grid">
-                {(['vorstellung', 'bild', 'planung'] as const).map(m => (
+                {(['vorstellung', 'bild', 'planung', 'schreiben'] as const).map(m => (
                     <button key={m} className="module-card" onClick={() => handleStartExam(m)} disabled={isProcessing}>
-                    <span className="icon">{m === 'vorstellung' ? '👤' : m === 'bild' ? '🖼️' : '🗓️'}</span>
+                    <span className="icon">
+                        {m === 'vorstellung' ? '👤' : m === 'bild' ? '🖼️' : m === 'planung' ? '🗓️' : '✍️'}
+                    </span>
                     <div className="module-info">
-                        <h3>{m === 'vorstellung' ? 'Teil 1: Sich vorstellen' : m === 'bild' ? 'Teil 2: Bildbeschreibung' : 'Teil 3: Gemeinsam planen'}</h3>
+                        <h3>
+                            {m === 'vorstellung' ? 'Teil 1: Sich vorstellen' : 
+                             m === 'bild' ? 'Teil 2: Bildbeschreibung' : 
+                             m === 'planung' ? 'Teil 3: Gemeinsam planen' : 
+                             'Teil 4: Schreiben (Brief/E-Mail)'}
+                        </h3>
                     </div>
                     {isProcessing && state.module === m && <ThinkingIcon />}
                     </button>
@@ -561,20 +664,55 @@ function App() {
             )}
 
             {state.step === 'exam' && (
-            <div className="exam-view">
-                {state.currentImage && <div className="exam-visual"><img src={state.currentImage} alt="exam" /></div>}
-                <div className="chat-area">
-                {state.history.map((msg, i) => (
-                    <div key={i} className={`bubble ${msg.role}`}>{msg.text}</div>
-                ))}
-                {isProcessing && <div className="bubble assistant loading"><ThinkingIcon /></div>}
-                </div>
-                <div className="controls">
-                <button className={`mic-btn ${isRecording ? 'recording' : ''}`} onClick={toggleRecording} disabled={isProcessing}>
-                    {isRecording ? "STOPP" : "SPRECHEN"}
-                </button>
-                </div>
-            </div>
+                <>
+                {state.module === 'schreiben' ? (
+                    <div className="writing-view">
+                         <div className="task-box">
+                            <div className="task-header">
+                                <h3>{state.writingTask?.topic}</h3>
+                                <div className="timer-display">{formatTime(state.timeLeft || 0)}</div>
+                            </div>
+                            <div className="task-content">
+                                {state.writingTask?.text.split('\n').map((line, i) => <p key={i}>{line}</p>)}
+                            </div>
+                         </div>
+                         <div className="writing-area-container">
+                             <textarea 
+                                className="writing-input" 
+                                placeholder="Schreiben Sie hier Ihren Text..."
+                                value={state.writingInput}
+                                onChange={(e) => setState(prev => ({...prev, writingInput: e.target.value}))}
+                                spellCheck={false}
+                             />
+                             <div className="writing-footer">
+                                 <span>{state.writingInput?.trim().split(/\s+/).filter(w => w.length > 0).length || 0} Wörter</span>
+                                 <button 
+                                    className="primary-btn small" 
+                                    onClick={() => generateGrading([], state.writingInput)}
+                                    disabled={isProcessing || !state.writingInput || state.writingInput.length < 10}
+                                 >
+                                     {isProcessing ? 'Sende...' : 'Abgeben'}
+                                 </button>
+                             </div>
+                         </div>
+                    </div>
+                ) : (
+                    <div className="exam-view">
+                        {state.currentImage && <div className="exam-visual"><img src={state.currentImage} alt="exam" /></div>}
+                        <div className="chat-area">
+                        {state.history.map((msg, i) => (
+                            <div key={i} className={`bubble ${msg.role}`}>{msg.text}</div>
+                        ))}
+                        {isProcessing && <div className="bubble assistant loading"><ThinkingIcon /></div>}
+                        </div>
+                        <div className="controls">
+                        <button className={`mic-btn ${isRecording ? 'recording' : ''}`} onClick={toggleRecording} disabled={isProcessing}>
+                            {isRecording ? "STOPP" : "SPRECHEN"}
+                        </button>
+                        </div>
+                    </div>
+                )}
+                </>
             )}
 
             {state.step === 'result' && (
