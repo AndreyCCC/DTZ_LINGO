@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { GoogleGenAI, Type, Modality } from '@google/genai';
+import OpenAI from 'openai';
 import { createClient, User } from '@supabase/supabase-js';
 import DottedGlowBackground from './components/DottedGlowBackground';
 import { ThinkingIcon, ArrowLeftIcon, SparklesIcon } from './components/Icons';
@@ -166,9 +166,23 @@ function App() {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  // Store AudioContext to be able to close/stop it
-  const audioContextRef = useRef<AudioContext | null>(null);
+  // Use HTMLAudioElement for playback with OpenAI URL
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const isExamActiveRef = useRef<boolean>(false);
+
+  // Initialize OpenAI
+  const openaiRef = useRef<OpenAI | null>(null);
+
+  useEffect(() => {
+    if (process.env.OPENAI_API_KEY) {
+        openaiRef.current = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+            dangerouslyAllowBrowser: true // Required for client-side use
+        });
+    } else {
+        console.error("OPENAI_API_KEY is missing");
+    }
+  }, []);
 
   useEffect(() => {
     // Check initial session
@@ -184,7 +198,6 @@ function App() {
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             if (session?.user) {
                 setUser(session.user);
-                // Wenn wir auf dem Auth-Screen waren, ins Menü wechseln
                 setState(prev => prev.step === 'auth' ? { ...prev, step: 'menu' } : prev);
                 fetchStats(session.user.id);
             } else {
@@ -198,7 +211,6 @@ function App() {
   }, []);
 
   const handleGuestLogin = () => {
-      // Mock user for guest mode
       const guestUser = { 
           id: 'guest', 
           email: 'gast@demo.de',
@@ -244,11 +256,9 @@ function App() {
   }, []);
 
   const stopAudio = () => {
-    if (audioContextRef.current) {
-        try {
-            audioContextRef.current.close();
-        } catch (e) { /* ignore */ }
-        audioContextRef.current = null;
+    if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
     }
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   };
@@ -263,64 +273,30 @@ function App() {
   };
 
   const speakText = async (text: string) => {
-    if (!isExamActiveRef.current) return;
+    if (!isExamActiveRef.current || !openaiRef.current) return;
     stopAudio();
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: text }] }],
-        config: {
-          responseModalities: [Modality.AUDIO], 
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Kore' },
-            },
-          },
-        },
+      const mp3 = await openaiRef.current.audio.speech.create({
+          model: "tts-1",
+          voice: "alloy",
+          input: text,
       });
 
-      if (!isExamActiveRef.current) return;
-
-      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (base64Audio) {
-         await playRawAudio(base64Audio);
+      const buffer = await mp3.arrayBuffer();
+      const blob = new Blob([buffer], { type: "audio/mpeg" });
+      const url = URL.createObjectURL(blob);
+      
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => { URL.revokeObjectURL(url); };
+      
+      if (isExamActiveRef.current) {
+          await audio.play();
       }
     } catch (e: any) {
       console.error(e);
       speakFallback(text);
     }
-  };
-
-  const playRawAudio = async (base64: string) => {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      audioContextRef.current = ctx;
-
-      const binaryString = atob(base64);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      
-      // Convert raw PCM 16-bit to Float32
-      const dataInt16 = new Int16Array(bytes.buffer);
-      const buffer = ctx.createBuffer(1, dataInt16.length, 24000);
-      const channelData = buffer.getChannelData(0);
-      for(let i=0; i<dataInt16.length; i++){
-          channelData[i] = dataInt16[i] / 32768.0;
-      }
-      
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.onended = () => { 
-          if(audioContextRef.current === ctx) {
-             ctx.close(); 
-             audioContextRef.current = null;
-          }
-      };
-      source.start();
   };
 
   const speakFallback = (text: string) => {
@@ -337,6 +313,11 @@ function App() {
 
   const handleStartExam = async (module: ExamModule) => {
     if (isProcessing) return;
+    if (!process.env.OPENAI_API_KEY) {
+        setError("API Key fehlt. Bitte Konfiguration prüfen.");
+        return;
+    }
+
     setIsProcessing(true);
     setError(null);
     isExamActiveRef.current = true;
@@ -373,39 +354,26 @@ function App() {
   };
 
   const generateGrading = async (history: Message[]) => {
+    if (!openaiRef.current) return;
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const transcript = history.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
         
-        const response = await ai.models.generateContent({
-            model: "gemini-3-pro-preview",
-            contents: [{ parts: [{ text: transcript }] }],
-            config: {
-                systemInstruction: `Du bist ein strenger DTZ Prüfer. Analysiere das Transkript.`,
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        grade: { type: Type.STRING, enum: ["A1", "A2", "B1", "Unter A1"] },
-                        reasoning: { type: Type.STRING },
-                        tips: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        mistakes: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    original: { type: Type.STRING },
-                                    correction: { type: Type.STRING },
-                                    explanation: { type: Type.STRING }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        const completion = await openaiRef.current.chat.completions.create({
+            model: "gpt-4o-mini", // ИСПОЛЬЗУЕМ БОЛЕЕ ДЕШЕВУЮ МОДЕЛЬ
+            messages: [
+                { role: "system", content: "Du bist ein strenger DTZ Prüfer. Analysiere das Transkript und gib das Ergebnis als JSON zurück." },
+                { role: "user", content: `Analysiere:\n${transcript}\n\nFormat JSON:\n{
+                    "grade": "A1" | "A2" | "B1" | "Unter A1",
+                    "reasoning": "string",
+                    "tips": ["string"],
+                    "mistakes": [{"original": "string", "correction": "string", "explanation": "string"}]
+                }`}
+            ],
+            response_format: { type: "json_object" }
         });
 
-        const result = JSON.parse(response.text || "{}") as GradingResult;
+        const content = completion.choices[0].message.content;
+        const result = JSON.parse(content || "{}") as GradingResult;
         
         if (isExamActiveRef.current) {
             setState(prev => ({ ...prev, grading: result }));
@@ -416,35 +384,19 @@ function App() {
     }
   };
 
-  const blobToBase64 = (blob: Blob): Promise<string> => {
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const result = reader.result as string;
-            resolve(result.split(',')[1]);
-        };
-        reader.readAsDataURL(blob);
-    });
-  };
-
   const processUserResponse = async (audioBlob: Blob) => {
+    if (!openaiRef.current) return;
     setIsProcessing(true);
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const base64Audio = await blobToBase64(audioBlob);
-
-        // 1. Transcribe
-        const transResponse = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: {
-                parts: [
-                    { inlineData: { mimeType: "audio/webm", data: base64Audio } },
-                    { text: "Transkribiere das Audio exakt Wort für Wort auf Deutsch. Gib nur den Text aus, keine Formatierung." }
-                ]
-            }
+        // 1. Transcribe (Whisper)
+        const file = new File([audioBlob], "recording.webm", { type: "audio/webm" });
+        const transcription = await openaiRef.current.audio.transcriptions.create({
+            file,
+            model: "whisper-1",
+            language: "de"
         });
 
-        const text = transResponse.text?.trim();
+        const text = transcription.text?.trim();
 
         if (!isExamActiveRef.current) return;
         if (!text || text.length < 2) {
@@ -465,24 +417,17 @@ function App() {
           }
         }
 
-        // 2. Chat
-        const historyContents = state.history.map(h => ({
-            role: h.role === 'user' ? 'user' : 'model',
-            parts: [{ text: h.text }]
-        }));
-
-        const chatResponse = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: [
-                ...historyContents,
-                { role: 'user', parts: [{ text }] }
-            ],
-            config: {
-                systemInstruction: systemPrompt
-            }
+        // 2. Chat (GPT-4o-mini)
+        const completion = await openaiRef.current.chat.completions.create({
+            model: "gpt-4o-mini", // ИСПОЛЬЗУЕМ БОЛЕЕ ДЕШЕВУЮ МОДЕЛЬ
+            messages: [
+                { role: "system", content: systemPrompt },
+                ...state.history.map(m => ({ role: m.role, content: m.text })),
+                { role: "user", content: text }
+            ]
         });
 
-        const aiText = chatResponse.text || "Bitte wiederholen.";
+        const aiText = completion.choices[0].message.content || "Bitte wiederholen.";
         if (!isExamActiveRef.current) return;
 
         const newHistory: Message[] = [...state.history, { role: 'user', text }, { role: 'assistant', text: aiText }];
