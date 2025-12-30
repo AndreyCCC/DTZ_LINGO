@@ -25,11 +25,11 @@ body, html {
     font-family: 'Inter', sans-serif; 
     height: 100%; 
     width: 100%;
-    overflow-x: hidden; 
+    overflow: hidden; /* Prevent body scroll, handle in app */
 }
 
 #root { 
-    min-height: 100vh; 
+    height: 100%; 
     display: flex; 
     flex-direction: column; 
 }
@@ -40,6 +40,8 @@ body, html {
     flex-direction: column; 
     position: relative; 
     width: 100%;
+    height: 100%;
+    overflow: hidden;
 }
 
 /* Auth */
@@ -47,10 +49,11 @@ body, html {
     display: flex; 
     align-items: center; 
     justify-content: center; 
-    min-height: 100vh; 
+    height: 100%; 
     padding: 20px; 
     z-index: 50; 
     width: 100%;
+    overflow-y: auto;
 }
 
 .auth-card { 
@@ -62,6 +65,7 @@ body, html {
     max-width: 350px; 
     text-align: center; 
     box-shadow: 0 10px 30px rgba(0,0,0,0.3); 
+    margin: auto;
 }
 
 .auth-card h2 { margin-bottom: 20px; }
@@ -81,6 +85,7 @@ body, html {
     background: var(--duo-bg); 
     z-index: 10; 
     width: 100%;
+    flex-shrink: 0;
 }
 
 .finish-btn { background: transparent; border: 2px solid var(--duo-border); color: var(--duo-text-sec); font-weight: bold; font-size: 0.75rem; padding: 6px 12px; border-radius: 10px; cursor: pointer; margin-left: auto; text-transform: uppercase; }
@@ -102,12 +107,14 @@ body, html {
     width: 100%; 
     position: relative; 
     z-index: 5; 
+    overflow-y: auto; /* Enable scrolling for content */
+    padding-bottom: 100px; /* Space for fixed controls */
 }
 
 .back-btn { background: none; border: none; color: var(--duo-text-sec); cursor: pointer; padding: 5px; }
 
 /* Menu */
-.menu-view { width: 100%; text-align: center; }
+.menu-view { width: 100%; text-align: center; padding-bottom: 20px; }
 .welcome h1 { margin: 10px 0; font-size: 1.8rem; }
 .avatar-placeholder { width: 80px; height: 80px; background: var(--duo-card); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-size: 2.5rem; color: #FFC800; border: 3px solid var(--duo-border); }
 .module-grid { display: flex; flex-direction: column; gap: 12px; width: 100%; }
@@ -121,7 +128,7 @@ body, html {
 .exam-view { width: 100%; display: flex; flex-direction: column; gap: 20px; }
 .exam-visual { width: 100%; border-radius: 16px; overflow: hidden; border: 3px solid var(--duo-border); aspect-ratio: 4/3; background: #000; }
 .exam-visual img { width: 100%; height: 100%; object-fit: cover; }
-.chat-area { margin-bottom: 120px; width: 100%; display: flex; flex-direction: column; }
+.chat-area { width: 100%; display: flex; flex-direction: column; }
 .bubble { padding: 12px 18px; border-radius: 18px; margin-bottom: 12px; max-width: 85%; line-height: 1.4; font-size: 1rem; }
 .bubble.assistant { background: var(--duo-card); align-self: flex-start; border: 2px solid var(--duo-border); border-bottom-left-radius: 4px; }
 .bubble.user { background: var(--duo-blue); align-self: flex-end; border-bottom: 4px solid var(--duo-blue-dark); border-bottom-right-radius: 4px; }
@@ -130,17 +137,19 @@ body, html {
 .mic-btn.recording { background: var(--duo-red); border-bottom-color: #D33131; animation: pulse 1.5s infinite; }
 
 /* Writing Module */
-.writing-view { width: 100%; display: flex; flex-direction: column; gap: 15px; height: 100%; flex: 1; }
-.task-box { background: var(--duo-card); border: 2px solid var(--duo-border); border-radius: 16px; padding: 20px; }
+.writing-view { width: 100%; display: flex; flex-direction: column; gap: 15px; flex: 1; min-height: 0; }
+.task-box { background: var(--duo-card); border: 2px solid var(--duo-border); border-radius: 16px; padding: 20px; flex-shrink: 0; }
 .task-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 10px; }
 .task-header h3 { margin: 0; font-size: 1.1rem; color: var(--duo-blue); }
 .timer-display { font-family: monospace; font-size: 1.2rem; background: rgba(0,0,0,0.3); padding: 5px 10px; border-radius: 8px; font-weight: bold; color: var(--duo-text-sec); border: 1px solid var(--duo-border); white-space: nowrap; }
 .task-content p { margin: 0 0 8px; font-size: 0.95rem; line-height: 1.4; white-space: pre-wrap; }
-.writing-area-container { flex: 1; display: flex; flex-direction: column; gap: 10px; }
-.writing-input { flex: 1; min-height: 250px; background: #18252B; border: 2px solid var(--duo-border); border-radius: 16px; padding: 15px; color: white; font-family: 'Inter', sans-serif; font-size: 1rem; line-height: 1.5; resize: none; width: 100%; outline: none; }
+
+/* Writing Area Flex Fix */
+.writing-area-container { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 300px; }
+.writing-input { flex: 1; background: #18252B; border: 2px solid var(--duo-border); border-radius: 16px; padding: 15px; color: white; font-family: 'Inter', sans-serif; font-size: 1rem; line-height: 1.5; resize: none; width: 100%; outline: none; min-height: 200px; }
 .writing-input:focus { border-color: var(--duo-blue); }
-.writing-footer { display: flex; justify-content: space-between; align-items: center; color: var(--duo-text-sec); font-size: 0.9rem; }
-.primary-btn.small { width: auto; padding: 10px 24px; margin: 0; }
+.writing-footer { display: flex; justify-content: space-between; align-items: center; color: var(--duo-text-sec); font-size: 0.9rem; padding-bottom: 20px; }
+.primary-btn.small { width: auto; padding: 12px 24px; margin: 0; }
 
 
 /* Result */
