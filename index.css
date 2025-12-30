@@ -108,7 +108,7 @@ body, html {
     position: relative; 
     z-index: 5; 
     overflow-y: auto; /* Enable scrolling for content */
-    padding-bottom: 100px; /* Space for fixed controls */
+    padding-bottom: 150px; /* Space for fixed controls + safe area */
 }
 
 .back-btn { background: none; border: none; color: var(--duo-text-sec); cursor: pointer; padding: 5px; }
