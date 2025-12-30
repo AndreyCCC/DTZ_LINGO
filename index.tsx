@@ -359,7 +359,7 @@ function App() {
         const transcript = history.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
         
         const completion = await openaiRef.current.chat.completions.create({
-            model: "gpt-4o-mini", // ИСПОЛЬЗУЕМ БОЛЕЕ ДЕШЕВУЮ МОДЕЛЬ
+            model: "gpt-4o-mini", // Использование дешевой модели
             messages: [
                 { role: "system", content: "Du bist ein strenger DTZ Prüfer. Analysiere das Transkript und gib das Ergebnis als JSON zurück." },
                 { role: "user", content: `Analysiere:\n${transcript}\n\nFormat JSON:\n{
@@ -419,7 +419,7 @@ function App() {
 
         // 2. Chat (GPT-4o-mini)
         const completion = await openaiRef.current.chat.completions.create({
-            model: "gpt-4o-mini", // ИСПОЛЬЗУЕМ БОЛЕЕ ДЕШЕВУЮ МОДЕЛЬ
+            model: "gpt-4o-mini", // Использование дешевой модели
             messages: [
                 { role: "system", content: systemPrompt },
                 ...state.history.map(m => ({ role: m.role, content: m.text })),
