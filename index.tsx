@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import OpenAI from 'openai';
+import { GoogleGenAI, Type, Modality } from '@google/genai';
 import { createClient, User } from '@supabase/supabase-js';
 import DottedGlowBackground from './components/DottedGlowBackground';
 import { ThinkingIcon, ArrowLeftIcon, SparklesIcon } from './components/Icons';
@@ -166,7 +166,8 @@ function App() {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  // Store AudioContext to be able to close/stop it
+  const audioContextRef = useRef<AudioContext | null>(null);
   const isExamActiveRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -183,7 +184,7 @@ function App() {
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             if (session?.user) {
                 setUser(session.user);
-                // Если мы были на экране авторизации, переходим в меню
+                // Wenn wir auf dem Auth-Screen waren, ins Menü wechseln
                 setState(prev => prev.step === 'auth' ? { ...prev, step: 'menu' } : prev);
                 fetchStats(session.user.id);
             } else {
@@ -238,22 +239,16 @@ function App() {
       fetchStats(user.id);
   };
 
-  // OpenAI Client initialization
-  const getOpenAI = () => {
-    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-    if (!apiKey) throw new Error("OpenAI API Key fehlt! Prüfen Sie .env oder Vercel Settings.");
-    return new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
-  };
-
   useEffect(() => {
     return () => stopAudio();
   }, []);
 
   const stopAudio = () => {
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.pause();
-      audioPlayerRef.current.currentTime = 0;
-      audioPlayerRef.current = null;
+    if (audioContextRef.current) {
+        try {
+            audioContextRef.current.close();
+        } catch (e) { /* ignore */ }
+        audioContextRef.current = null;
     }
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   };
@@ -271,23 +266,61 @@ function App() {
     if (!isExamActiveRef.current) return;
     stopAudio();
     try {
-      const openai = getOpenAI();
-      const mp3 = await openai.audio.speech.create({
-        model: "tts-1",
-        voice: "onyx",
-        input: text,
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: text }] }],
+        config: {
+          responseModalities: [Modality.AUDIO], 
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Kore' },
+            },
+          },
+        },
       });
+
       if (!isExamActiveRef.current) return;
-      const blob = await mp3.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audioPlayerRef.current = audio;
-      audio.onended = () => { if (audioPlayerRef.current === audio) audioPlayerRef.current = null; URL.revokeObjectURL(url); };
-      await audio.play();
+
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+         await playRawAudio(base64Audio);
+      }
     } catch (e: any) {
       console.error(e);
       speakFallback(text);
     }
+  };
+
+  const playRawAudio = async (base64: string) => {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      audioContextRef.current = ctx;
+
+      const binaryString = atob(base64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      // Convert raw PCM 16-bit to Float32
+      const dataInt16 = new Int16Array(bytes.buffer);
+      const buffer = ctx.createBuffer(1, dataInt16.length, 24000);
+      const channelData = buffer.getChannelData(0);
+      for(let i=0; i<dataInt16.length; i++){
+          channelData[i] = dataInt16[i] / 32768.0;
+      }
+      
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.onended = () => { 
+          if(audioContextRef.current === ctx) {
+             ctx.close(); 
+             audioContextRef.current = null;
+          }
+      };
+      source.start();
   };
 
   const speakFallback = (text: string) => {
@@ -341,33 +374,41 @@ function App() {
 
   const generateGrading = async (history: Message[]) => {
     try {
-        const openai = getOpenAI();
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const transcript = history.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
         
-        const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-                {
-                    role: "system",
-                    content: `Du bist ein strenger DTZ Prüfer. Analysiere das Transkript.
-                    Erstelle JSON:
-                    {
-                        "grade": "A1" | "A2" | "B1" | "Unter A1",
-                        "reasoning": "Kurze Erklärung",
-                        "mistakes": [{ "original": "...", "correction": "...", "explanation": "..." }],
-                        "tips": ["Tipp 1", "Tipp 2"]
-                    }`
-                },
-                { role: "user", content: transcript }
-            ],
-            response_format: { type: "json_object" }
+        const response = await ai.models.generateContent({
+            model: "gemini-3-pro-preview",
+            contents: [{ parts: [{ text: transcript }] }],
+            config: {
+                systemInstruction: `Du bist ein strenger DTZ Prüfer. Analysiere das Transkript.`,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        grade: { type: Type.STRING, enum: ["A1", "A2", "B1", "Unter A1"] },
+                        reasoning: { type: Type.STRING },
+                        tips: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        mistakes: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    original: { type: Type.STRING },
+                                    correction: { type: Type.STRING },
+                                    explanation: { type: Type.STRING }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         });
 
-        const result = JSON.parse(response.choices[0].message.content || "{}") as GradingResult;
+        const result = JSON.parse(response.text || "{}") as GradingResult;
         
         if (isExamActiveRef.current) {
             setState(prev => ({ ...prev, grading: result }));
-            // Save to database only if not guest
             saveResult(result, state.module);
         }
     } catch (e) {
@@ -375,16 +416,38 @@ function App() {
     }
   };
 
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const result = reader.result as string;
+            resolve(result.split(',')[1]);
+        };
+        reader.readAsDataURL(blob);
+    });
+  };
+
   const processUserResponse = async (audioBlob: Blob) => {
     setIsProcessing(true);
     try {
-        const openai = getOpenAI();
-        const file = new File([audioBlob], "input.webm", { type: "audio/webm" });
-        const transcription = await openai.audio.transcriptions.create({ file, model: "whisper-1", language: "de" });
-        const text = transcription.text;
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const base64Audio = await blobToBase64(audioBlob);
+
+        // 1. Transcribe
+        const transResponse = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: "audio/webm", data: base64Audio } },
+                    { text: "Transkribiere das Audio exakt Wort für Wort auf Deutsch. Gib nur den Text aus, keine Formatierung." }
+                ]
+            }
+        });
+
+        const text = transResponse.text?.trim();
 
         if (!isExamActiveRef.current) return;
-        if (!text || text.trim().length < 2) {
+        if (!text || text.length < 2) {
              const fallback = "Ich habe Sie nicht verstanden. Bitte wiederholen.";
              setState(prev => ({ ...prev, history: [...prev.history, { role: 'user', text: "..." }, { role: 'assistant', text: fallback }] }));
              await speakText(fallback);
@@ -394,33 +457,36 @@ function App() {
 
         // --- Custom Logic for System Prompt based on Module ---
         let systemPrompt = "Du bist DTZ Prüfer. Antworte kurz (max 2 Sätze). Stelle eine Frage.";
-        
         if (state.module === 'bild') {
           if (state.turnCount === 0) {
-            // First turn: User just described the picture. Ask about a DETAIL in the picture.
-            systemPrompt = "Du bist DTZ Prüfer (Teil 2: Bildbeschreibung). Der Teilnehmer hat das Bild beschrieben. Stelle nun EINE konkrete Frage zu einem Detail, das man auf dem Bild sehen könnte. Sei freundlich aber prüfungsorientiert.";
+            systemPrompt = "Du bist DTZ Prüfer (Teil 2: Bildbeschreibung). Der Teilnehmer hat das Bild beschrieben. Stelle nun EINE konkrete Frage zu einem Detail, das man auf dem Bild sehen könnte.";
           } else if (state.turnCount === 1) {
-            // Second turn: User answered detail question. Ask about EXPERIENCE/FEELINGS.
             systemPrompt = "Du bist DTZ Prüfer (Teil 2: Bildbeschreibung). Stelle nun EINE Frage zu den persönlichen Erfahrungen, Gefühlen oder der Meinung des Teilnehmers zum Thema des Bildes.";
           }
         }
-        // -----------------------------------------------------
 
-        const chat = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-                { role: "system", content: systemPrompt },
-                ...state.history.map(h => ({ role: h.role, content: h.text })),
-                { role: "user", content: text }
-            ]
+        // 2. Chat
+        const historyContents = state.history.map(h => ({
+            role: h.role === 'user' ? 'user' : 'model',
+            parts: [{ text: h.text }]
+        }));
+
+        const chatResponse = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: [
+                ...historyContents,
+                { role: 'user', parts: [{ text }] }
+            ],
+            config: {
+                systemInstruction: systemPrompt
+            }
         });
 
-        const aiText = chat.choices[0].message.content || "Bitte wiederholen.";
+        const aiText = chatResponse.text || "Bitte wiederholen.";
         if (!isExamActiveRef.current) return;
 
         const newHistory: Message[] = [...state.history, { role: 'user', text }, { role: 'assistant', text: aiText }];
 
-        // End exam after 2 AI questions (Total turns: 0 -> 1 -> 2 (End))
         if (state.turnCount >= 2) {
           setState(prev => ({ ...prev, history: newHistory, step: 'result', grading: undefined }));
           generateGrading(newHistory);
@@ -429,7 +495,7 @@ function App() {
           await speakText(aiText);
         }
     } catch (e: any) {
-        setError(e.message || "Fehler bei OpenAI.");
+        setError(e.message || "Fehler bei der KI.");
     } finally {
         if (isExamActiveRef.current) setIsProcessing(false);
     }
