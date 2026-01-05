@@ -393,17 +393,27 @@ function App() {
   const fetchExamImage = async (topic: string): Promise<string> => {
       const accessKey = process.env.UNSPLASH_ACCESS_KEY;
       if (!accessKey) {
-          console.warn("No Unsplash key found, using fallback");
+          console.warn("Unsplash: No access key provided. Check .env VITE_UNSPLASH_ACCESS_KEY.");
           return FALLBACK_IMAGES[Math.floor(Math.random() * FALLBACK_IMAGES.length)];
       }
 
       try {
+          // Added timestamp to prevent caching issues if any
           const response = await fetch(`https://api.unsplash.com/photos/random?query=${encodeURIComponent(topic)}&orientation=landscape&client_id=${accessKey}`);
-          if (!response.ok) throw new Error("Unsplash API Error");
+          
+          if (!response.ok) {
+              const errText = await response.text();
+              console.error(`Unsplash API Error: ${response.status}`, errText);
+              throw new Error(`Unsplash Status ${response.status}`);
+          }
+          
           const data = await response.json();
+          if (!data.urls || !data.urls.regular) {
+              throw new Error("No image URL in response");
+          }
           return data.urls.regular;
       } catch (e) {
-          console.error("Failed to fetch image", e);
+          console.error("Failed to fetch image from Unsplash", e);
           return FALLBACK_IMAGES[Math.floor(Math.random() * FALLBACK_IMAGES.length)];
       }
   };
@@ -444,6 +454,7 @@ function App() {
     try {
       if (module === 'bild') {
         topic = EXAM_TOPICS[Math.floor(Math.random() * EXAM_TOPICS.length)];
+        console.log("Selected Topic:", topic);
         currentImage = await fetchExamImage(topic);
         initialGreeting = `Guten Tag. Teil 2: Bildbeschreibung. Thema: ${topic}. Was sehen Sie?`;
       } else if (module === 'vorstellung') {
