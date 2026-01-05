@@ -391,19 +391,23 @@ function App() {
   };
 
   const fetchExamImage = async (topic: string): Promise<string> => {
-      const accessKey = process.env.UNSPLASH_ACCESS_KEY;
+      // Check both process.env and import.meta.env for better compatibility
+      const accessKey = process.env.UNSPLASH_ACCESS_KEY || import.meta.env.VITE_UNSPLASH_ACCESS_KEY;
+      
+      console.log(`[Unsplash] Fetching for topic: "${topic}"`);
+      console.log(`[Unsplash] Key exists: ${!!accessKey}`);
+
       if (!accessKey) {
           console.warn("Unsplash: No access key provided. Check .env VITE_UNSPLASH_ACCESS_KEY.");
           return FALLBACK_IMAGES[Math.floor(Math.random() * FALLBACK_IMAGES.length)];
       }
 
       try {
-          // Added timestamp to prevent caching issues if any
-          const response = await fetch(`https://api.unsplash.com/photos/random?query=${encodeURIComponent(topic)}&orientation=landscape&client_id=${accessKey}`);
+          const url = `https://api.unsplash.com/photos/random?query=${encodeURIComponent(topic)}&orientation=landscape&client_id=${accessKey}`;
+          const response = await fetch(url);
           
           if (!response.ok) {
-              const errText = await response.text();
-              console.error(`Unsplash API Error: ${response.status}`, errText);
+              console.error(`[Unsplash] API Error: ${response.status}`);
               throw new Error(`Unsplash Status ${response.status}`);
           }
           
@@ -411,9 +415,10 @@ function App() {
           if (!data.urls || !data.urls.regular) {
               throw new Error("No image URL in response");
           }
+          console.log("[Unsplash] Success");
           return data.urls.regular;
       } catch (e) {
-          console.error("Failed to fetch image from Unsplash", e);
+          console.error("[Unsplash] Failed to fetch image", e);
           return FALLBACK_IMAGES[Math.floor(Math.random() * FALLBACK_IMAGES.length)];
       }
   };
@@ -745,7 +750,14 @@ function App() {
                     </div>
                 ) : (
                     <div className="exam-view">
-                        {state.currentImage && <div className="exam-visual"><img src={state.currentImage} alt="exam" /></div>}
+                        {state.currentImage && (
+                            <div className="exam-visual">
+                                <img src={state.currentImage} alt="exam" />
+                                {state.currentTopic && (
+                                    <div className="topic-overlay">Thema: {state.currentTopic}</div>
+                                )}
+                            </div>
+                        )}
                         <div className="chat-area">
                         {state.history.map((msg, i) => (
                             <div key={i} className={`bubble ${msg.role}`}>{msg.text}</div>
