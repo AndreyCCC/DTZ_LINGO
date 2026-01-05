@@ -8,7 +8,7 @@ import { supabase } from './supabase';
 
 // --- Constants ---
 
-// Fallback images in case Unsplash fails or no key provided
+// Fallback images (Standard) - used if API fails
 const FALLBACK_IMAGES = [
   "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80", // Restaurant/Cafe
   "https://images.unsplash.com/photo-1556910103-1c02745a30bf?w=800&q=80", // Kitchen/Cooking
@@ -75,6 +75,8 @@ interface ExamState {
   history: Message[];
   turnCount: number;
   currentImage?: string;
+  imageSource?: 'unsplash' | 'fallback'; 
+  debugInfo?: string; // NEW: To show errors on screen
   currentTopic?: string;
   grading?: GradingResult;
   // Writing specific
@@ -390,36 +392,43 @@ function App() {
     window.speechSynthesis.speak(utterance);
   };
 
-  const fetchExamImage = async (topic: string): Promise<string> => {
-      // Check both process.env and import.meta.env for better compatibility
+  // --- REVISED IMAGE FETCHING ---
+  const fetchExamImage = async (topic: string): Promise<{url: string, source: 'unsplash' | 'fallback', debug?: string}> => {
+      // 1. Get Key
       const accessKey = process.env.UNSPLASH_ACCESS_KEY || import.meta.env.VITE_UNSPLASH_ACCESS_KEY;
       
-      console.log(`[Unsplash] Fetching for topic: "${topic}"`);
-      console.log(`[Unsplash] Key exists: ${!!accessKey}`);
+      const fallbackUrl = FALLBACK_IMAGES[Math.floor(Math.random() * FALLBACK_IMAGES.length)];
 
       if (!accessKey) {
-          console.warn("Unsplash: No access key provided. Check .env VITE_UNSPLASH_ACCESS_KEY.");
-          return FALLBACK_IMAGES[Math.floor(Math.random() * FALLBACK_IMAGES.length)];
+          console.warn("Unsplash: No access key provided.");
+          return { url: fallbackUrl, source: 'fallback', debug: 'MISSING_KEY_IN_ENV' };
       }
 
       try {
-          const url = `https://api.unsplash.com/photos/random?query=${encodeURIComponent(topic)}&orientation=landscape&client_id=${accessKey}`;
-          const response = await fetch(url);
+          // 2. Fetch with Headers (more robust than query params)
+          const response = await fetch(`https://api.unsplash.com/photos/random?query=${encodeURIComponent(topic)}&orientation=landscape`, {
+              headers: {
+                  'Authorization': `Client-ID ${accessKey}`
+              }
+          });
           
           if (!response.ok) {
-              console.error(`[Unsplash] API Error: ${response.status}`);
-              throw new Error(`Unsplash Status ${response.status}`);
+              const errText = `API_ERROR_${response.status}`; // e.g. API_ERROR_403 (Rate Limit)
+              console.error(`[Unsplash] Error: ${response.status}`);
+              return { url: fallbackUrl, source: 'fallback', debug: errText };
           }
           
           const data = await response.json();
           if (!data.urls || !data.urls.regular) {
-              throw new Error("No image URL in response");
+              return { url: fallbackUrl, source: 'fallback', debug: 'NO_IMAGE_DATA' };
           }
+
           console.log("[Unsplash] Success");
-          return data.urls.regular;
-      } catch (e) {
-          console.error("[Unsplash] Failed to fetch image", e);
-          return FALLBACK_IMAGES[Math.floor(Math.random() * FALLBACK_IMAGES.length)];
+          return { url: data.urls.regular, source: 'unsplash', debug: 'OK' };
+
+      } catch (e: any) {
+          console.error("[Unsplash] Failed connection", e);
+          return { url: fallbackUrl, source: 'fallback', debug: `NET_ERR: ${e.message}` };
       }
   };
 
@@ -454,13 +463,20 @@ function App() {
     // Oral Modules Logic
     let initialGreeting = "";
     let currentImage = "";
+    let imageSource: 'unsplash' | 'fallback' | undefined;
+    let debugInfo = "";
     let topic = "";
 
     try {
       if (module === 'bild') {
         topic = EXAM_TOPICS[Math.floor(Math.random() * EXAM_TOPICS.length)];
         console.log("Selected Topic:", topic);
-        currentImage = await fetchExamImage(topic);
+        
+        const imgData = await fetchExamImage(topic);
+        currentImage = imgData.url;
+        imageSource = imgData.source;
+        debugInfo = imgData.debug || "";
+
         initialGreeting = `Guten Tag. Teil 2: Bildbeschreibung. Thema: ${topic}. Was sehen Sie?`;
       } else if (module === 'vorstellung') {
         initialGreeting = "Guten Tag. Teil 1: Die Vorstellung. Erzählen Sie etwas über sich.";
@@ -475,6 +491,8 @@ function App() {
             history: [{ role: 'assistant', text: initialGreeting }], 
             turnCount: 0, 
             currentImage,
+            imageSource,
+            debugInfo,
             currentTopic: topic,
             grading: undefined
         });
@@ -753,9 +771,14 @@ function App() {
                         {state.currentImage && (
                             <div className="exam-visual">
                                 <img src={state.currentImage} alt="exam" />
-                                {state.currentTopic && (
-                                    <div className="topic-overlay">Thema: {state.currentTopic}</div>
-                                )}
+                                <div className="topic-overlay">
+                                    Thema: {state.currentTopic}
+                                    {state.debugInfo && state.debugInfo !== 'OK' && (
+                                        <div style={{color: '#FF4B4B', fontWeight: 'bold', marginTop: '4px', fontSize: '11px'}}>
+                                           ❌ DEBUG: {state.debugInfo}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
                         <div className="chat-area">
