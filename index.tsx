@@ -7,15 +7,28 @@ import { ThinkingIcon, ArrowLeftIcon, SparklesIcon } from './components/Icons';
 import { supabase } from './supabase';
 
 // --- Constants ---
-const EXAM_IMAGES = [
-  "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80",
-  "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80",
-  "https://images.unsplash.com/photo-1556910103-1c02745a30bf?w=800&q=80",
-  "https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&q=80",
-  "https://images.unsplash.com/photo-1497215728101-856f4ea42174?w=800&q=80",
-  "https://images.unsplash.com/photo-1570829460005-c840387bb1ca?w=800&q=80",
-  "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=800&q=80",
-  "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=800&q=80",
+
+// Fallback images in case Unsplash fails or no key provided
+const FALLBACK_IMAGES = [
+  "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80", // Restaurant/Cafe
+  "https://images.unsplash.com/photo-1556910103-1c02745a30bf?w=800&q=80", // Kitchen/Cooking
+  "https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&q=80", // Market/Shopping
+  "https://images.unsplash.com/photo-1570829460005-c840387bb1ca?w=800&q=80", // Living room
+  "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=800&q=80", // Office
+];
+
+const EXAM_TOPICS = [
+  "Supermarkt", "Einkaufen", "Kasse", "Lebensmittel", "Geschäft", 
+  "Apotheke", "Arztpraxis", "Arzttermin", "Krankenhaus", 
+  "Busbahnhof", "Bushaltestelle", "Bahnhof", "Fahrkartenautomat", 
+  "Büro", "Bewerbungsgespräch", "Arbeitsplatz", "Teamarbeit", 
+  "Lager", "Restaurant", "Küche", "Reinigung", "Bauarbeit", 
+  "Wohnung", "Wohnzimmer", "Badezimmer", "Reparatur", "Vermieter", "Haushalt", 
+  "Sprachkurs", "Klassenzimmer", "Bibliothek", "Lernen", 
+  "Post", "Bank", "Servicezentrum", 
+  "Freizeit", "Park", "Café", "Veranstaltung", 
+  "Bürgeramt", "Rathaus", "Jobcenter", "Ausländerbehörde", "Warteschlange", 
+  "Smartphone", "Laptop", "Geldautomat", "Zahlungsterminal"
 ];
 
 const WRITING_PROMPTS = [
@@ -62,6 +75,7 @@ interface ExamState {
   history: Message[];
   turnCount: number;
   currentImage?: string;
+  currentTopic?: string;
   grading?: GradingResult;
   // Writing specific
   writingTask?: { topic: string; text: string };
@@ -376,6 +390,24 @@ function App() {
     window.speechSynthesis.speak(utterance);
   };
 
+  const fetchExamImage = async (topic: string): Promise<string> => {
+      const accessKey = process.env.UNSPLASH_ACCESS_KEY;
+      if (!accessKey) {
+          console.warn("No Unsplash key found, using fallback");
+          return FALLBACK_IMAGES[Math.floor(Math.random() * FALLBACK_IMAGES.length)];
+      }
+
+      try {
+          const response = await fetch(`https://api.unsplash.com/photos/random?query=${encodeURIComponent(topic)}&orientation=landscape&client_id=${accessKey}`);
+          if (!response.ok) throw new Error("Unsplash API Error");
+          const data = await response.json();
+          return data.urls.regular;
+      } catch (e) {
+          console.error("Failed to fetch image", e);
+          return FALLBACK_IMAGES[Math.floor(Math.random() * FALLBACK_IMAGES.length)];
+      }
+  };
+
   const handleStartExam = async (module: ExamModule) => {
     if (isProcessing) return;
     if (!process.env.OPENAI_API_KEY) {
@@ -407,11 +439,13 @@ function App() {
     // Oral Modules Logic
     let initialGreeting = "";
     let currentImage = "";
+    let topic = "";
 
     try {
       if (module === 'bild') {
-        currentImage = EXAM_IMAGES[Math.floor(Math.random() * EXAM_IMAGES.length)];
-        initialGreeting = "Guten Tag. Teil 2: Bildbeschreibung. Was sehen Sie?";
+        topic = EXAM_TOPICS[Math.floor(Math.random() * EXAM_TOPICS.length)];
+        currentImage = await fetchExamImage(topic);
+        initialGreeting = `Guten Tag. Teil 2: Bildbeschreibung. Thema: ${topic}. Was sehen Sie?`;
       } else if (module === 'vorstellung') {
         initialGreeting = "Guten Tag. Teil 1: Die Vorstellung. Erzählen Sie etwas über sich.";
       } else {
@@ -425,6 +459,7 @@ function App() {
             history: [{ role: 'assistant', text: initialGreeting }], 
             turnCount: 0, 
             currentImage,
+            currentTopic: topic,
             grading: undefined
         });
         await speakText(initialGreeting);
@@ -455,7 +490,8 @@ function App() {
         } else {
              // Oral Grading
              const transcript = history.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
-             systemPrompt = "Du bist ein strenger DTZ Prüfer (Mündlich). Analysiere das Transkript.";
+             const topicInfo = state.currentTopic ? `(Thema: ${state.currentTopic})` : "";
+             systemPrompt = `Du bist ein strenger DTZ Prüfer (Mündlich). Modul: ${state.module}. ${topicInfo} Analysiere das Transkript.`;
              userContent = `Analysiere:\n${transcript}\n\nFormat JSON:\n{
                 "grade": "A1" | "A2" | "B1" | "Unter A1",
                 "reasoning": "string",
@@ -515,9 +551,9 @@ function App() {
         let systemPrompt = "Du bist DTZ Prüfer. Antworte kurz (max 2 Sätze). Stelle eine Frage.";
         if (state.module === 'bild') {
           if (state.turnCount === 0) {
-            systemPrompt = "Du bist DTZ Prüfer (Teil 2: Bildbeschreibung). Der Teilnehmer hat das Bild beschrieben. Stelle nun EINE konkrete Frage zu einem Detail, das man auf dem Bild sehen könnte.";
+            systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Der Teilnehmer hat das Bild beschrieben. Stelle nun EINE konkrete Frage zu einem Detail, das man auf einem Bild zum Thema "${state.currentTopic}" sehen könnte.`;
           } else if (state.turnCount === 1) {
-            systemPrompt = "Du bist DTZ Prüfer (Teil 2: Bildbeschreibung). Stelle nun EINE Frage zu den persönlichen Erfahrungen, Gefühlen oder der Meinung des Teilnehmers zum Thema des Bildes.";
+            systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Stelle nun EINE Frage zu den persönlichen Erfahrungen des Teilnehmers mit dem Thema "${state.currentTopic}".`;
           }
         }
 
