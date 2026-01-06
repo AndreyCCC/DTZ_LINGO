@@ -188,6 +188,15 @@ body, html {
 .mistake-orig { color: var(--duo-red); margin-bottom: 4px; font-weight: 600; }
 .mistake-corr { color: var(--duo-green); margin-bottom: 4px; font-weight: 600; }
 
+/* Annotated Text Styles */
+.annotated-text-container { font-family: 'Inter', sans-serif; font-size: 1rem; line-height: 1.8; color: var(--duo-text); white-space: pre-wrap; }
+.error-highlight { background: rgba(255, 75, 75, 0.15); border-bottom: 2px solid var(--duo-red); padding: 2px 4px; border-radius: 4px; position: relative; cursor: default; }
+.error-badge { background: var(--duo-red); color: white; border-radius: 50%; font-size: 0.65rem; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; vertical-align: super; margin-left: 2px; font-weight: bold; border: 1px solid rgba(255,255,255,0.2); }
+
+/* Detailed Mistake Card */
+.error-detail-card { display: flex; gap: 12px; align-items: flex-start; text-align: left; }
+.error-number-circle { background: var(--duo-red); color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem; flex-shrink: 0; margin-top: 2px; }
+
 .primary-btn { width: 100%; background: var(--duo-blue); border: none; border-bottom: 5px solid var(--duo-blue-dark); color: white; padding: 16px; border-radius: 16px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
 .primary-btn:disabled { opacity: 0.7; cursor: not-allowed; }
 .secondary-btn { width: 100%; background: transparent; border: 2px solid var(--duo-border); color: var(--duo-text-sec); padding: 14px; border-radius: 16px; font-weight: bold; cursor: pointer; text-transform: uppercase; margin-top: 10px; }

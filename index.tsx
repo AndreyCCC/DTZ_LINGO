@@ -520,13 +520,13 @@ function App() {
                 "grade": "A1" | "A2" | "B1" | "Unter A1",
                 "reasoning": "Kurzes Feedback (Deutsch)",
                 "tips": ["Tipp 1", "Tipp 2"],
-                "mistakes": [{"original": "Fehlerhafter Satzteil", "correction": "Korrektur", "explanation": "Erklärung"}]
+                "mistakes": [{"original": "Fehlerhafter Satzteil (genau wie im Text)", "correction": "Korrektur", "explanation": "Erklärung"}]
             }`;
         } else {
              // Oral Grading
              const transcript = history.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
              const topicInfo = state.currentTopic ? `(Thema: ${state.currentTopic})` : "";
-             systemPrompt = `Du bist ein strenger DTZ Prüfer (Mündlich). Modul: ${state.module}. ${topicInfo} Analysiere das Transkript.`;
+             systemPrompt = `Du bist ein strenger DTZ Prüfer (Mündlich). Modul: ${state.module}. ${topicInfo} Analysiere das Transkript. Ignoriere Fehler bei der Zeichensetzung (Punkt, Komma), da es sich um ein Transkript gesprochener Sprache handelt.`;
              userContent = `Analysiere:\n${transcript}\n\nFormat JSON:\n{
                 "grade": "A1" | "A2" | "B1" | "Unter A1",
                 "reasoning": "string",
@@ -584,7 +584,12 @@ function App() {
 
         // --- Custom Logic for System Prompt based on Module ---
         let systemPrompt = "Du bist DTZ Prüfer. Antworte kurz (max 2 Sätze). Stelle eine Frage.";
-        if (state.module === 'bild') {
+        
+        const isFinalTurn = state.turnCount >= 2;
+
+        if (isFinalTurn) {
+             systemPrompt = "Du bist DTZ Prüfer. Der Teil ist beendet. Reagiere kurz und freundlich auf das Gesagte. Sage dann exakt: 'Danke, wir berechnen jetzt Ihre Punkte.' Stelle KEINE neuen Fragen.";
+        } else if (state.module === 'bild') {
           if (state.turnCount === 0) {
             systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Der Teilnehmer hat das Bild beschrieben. Stelle nun EINE konkrete Frage zu einem Detail, das man auf einem Bild zum Thema "${state.currentTopic}" sehen könnte.`;
           } else if (state.turnCount === 1) {
@@ -607,7 +612,9 @@ function App() {
 
         const newHistory: Message[] = [...state.history, { role: 'user', text }, { role: 'assistant', text: aiText }];
 
-        if (state.turnCount >= 2) {
+        if (isFinalTurn) {
+          // Play the final audio
+          await speakText(aiText);
           // Finish oral exam
           generateGrading(newHistory);
         } else {
@@ -649,31 +656,156 @@ function App() {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  // --- Helper for Writing Grading ---
+  const renderAnnotatedText = (text: string, mistakes: Array<{original: string, correction: string, explanation: string}>) => {
+     if (!text) return { rendered: null, mappedMistakes: [] };
+
+     // 1. Find all occurrences and map them
+     // We simply find the first occurrence that matches, but we need to be careful with duplicates.
+     // For simplicity and robustness with AI output, we will try to match "original" strings.
+     
+     let ranges: Array<{start: number, end: number, data: any}> = [];
+     
+     // Clone mistakes to avoiding mutation if needed, though not strictly necessary here
+     // We want to sort mistakes by their position in text to handle them sequentially
+     const mappedMistakes = mistakes.map((m, index) => {
+        return { ...m, id: index + 1 }; // Temp ID, will reassign based on text position
+     });
+
+     // Find positions
+     let searchBuffer = text;
+     let offset = 0;
+     
+     // We need a strategy to locate mistakes. Since one word can appear multiple times, 
+     // we will just find all of them. 
+     // Actually, a safer bet is to assume the AI quotes a unique enough string.
+     // Let's iterate and find. To avoid finding the same index for two identical error words,
+     // we'd need a used-indices map.
+     
+     const foundMistakes: Array<{start: number, end: number, mistake: any}> = [];
+     
+     mappedMistakes.forEach(m => {
+        // Clean original string (trim)
+        const searchStr = m.original.trim();
+        if(!searchStr) return;
+        
+        // Find all indices of this string
+        let pos = -1;
+        while ((pos = text.indexOf(searchStr, pos + 1)) !== -1) {
+            // Check if this range overlaps with any already found range
+            const end = pos + searchStr.length;
+            const overlap = foundMistakes.some(fm => 
+                (pos >= fm.start && pos < fm.end) || (end > fm.start && end <= fm.end) || (pos <= fm.start && end >= fm.end)
+            );
+            
+            if (!overlap) {
+                foundMistakes.push({ start: pos, end: end, mistake: m });
+                break; // Take the first non-overlapping occurrence
+            }
+        }
+     });
+
+     // Sort found mistakes by position
+     foundMistakes.sort((a, b) => a.start - b.start);
+
+     // Re-assign IDs based on text order (1, 2, 3...)
+     const orderedMistakes = foundMistakes.map((fm, i) => ({
+         ...fm.mistake,
+         realId: i + 1,
+         start: fm.start,
+         end: fm.end
+     }));
+
+     // Build React Elements
+     const elements: ReactNode[] = [];
+     let cursor = 0;
+
+     orderedMistakes.forEach((fm, i) => {
+         // Text before
+         if (fm.start > cursor) {
+             elements.push(<span key={`txt-${i}`}>{text.substring(cursor, fm.start)}</span>);
+         }
+         // Error Highlight
+         elements.push(
+             <span key={`err-${i}`} className="error-highlight">
+                 {text.substring(fm.start, fm.end)}
+                 <sup className="error-badge">{fm.realId}</sup>
+             </span>
+         );
+         cursor = fm.end;
+     });
+     
+     // Tail text
+     if (cursor < text.length) {
+         elements.push(<span key="txt-end">{text.substring(cursor)}</span>);
+     }
+
+     return { 
+         rendered: <div className="annotated-text-container">{elements}</div>, 
+         orderedMistakes 
+     };
+  };
+
   // --- Views ---
-  const ResultView = ({ grading }: { grading?: GradingResult }) => {
+  const ResultView = ({ grading, userText, module }: { grading?: GradingResult, userText?: string, module: ExamModule }) => {
       if (!grading) return <div className="result-loading"><ThinkingIcon /><p>Auswertung läuft...</p></div>;
+      
       const color = grading.grade === 'B1' ? '#58CC02' : grading.grade === 'A2' ? '#FFC800' : '#FF4B4B';
+      
+      let annotatedView = null;
+      let orderedMistakes = grading.mistakes || [];
+
+      // Special View for Writing
+      if (module === 'schreiben' && userText && grading.mistakes) {
+         const annotation = renderAnnotatedText(userText, grading.mistakes);
+         annotatedView = annotation.rendered;
+         // Use the re-ordered mistakes list which matches the bubbles
+         if (annotation.orderedMistakes.length > 0) {
+             orderedMistakes = annotation.orderedMistakes;
+         }
+      }
+
       return (
           <div className="result-content">
               <div className="grade-badge" style={{ borderColor: color, color }}>
                   <span className="label">Niveau</span>
                   <span className="value">{grading.grade}</span>
               </div>
+              
               <div className="result-section"><h3>Begründung</h3><p>{grading.reasoning}</p></div>
+
+              {/* Writing: Annotated Text */}
+              {annotatedView && (
+                  <div className="result-section">
+                      <h3>Ihr Text</h3>
+                      {annotatedView}
+                  </div>
+              )}
+
+              {/* Tips */}
               {grading.tips && grading.tips.length > 0 && (
                  <div className="result-section"><h3>Tipps</h3>
                     <ul style={{paddingLeft: '20px', margin: 0}}>{grading.tips.map((t, i) => <li key={i}>{t}</li>)}</ul>
                  </div>
               )}
-              {grading.mistakes?.length > 0 && (
-                  <div className="result-section"><h3>Fehler</h3>
-                      <div className="mistakes-list">{grading.mistakes.map((m, i) => (
-                          <div key={i} className="mistake-item">
-                              <div className="mistake-orig">❌ {m.original}</div>
-                              <div className="mistake-corr">✅ {m.correction}</div>
-                              <div style={{fontSize:'0.85rem', opacity:0.8}}>{m.explanation}</div>
+
+              {/* Mistakes List */}
+              {orderedMistakes.length > 0 && (
+                  <div className="result-section"><h3>Fehler & Korrekturen</h3>
+                      <div className="mistakes-list">
+                      {orderedMistakes.map((m: any, i) => (
+                          <div key={i} className="mistake-item error-detail-card">
+                              {module === 'schreiben' && m.realId && (
+                                  <div className="error-number-circle">{m.realId}</div>
+                              )}
+                              <div style={{flex: 1}}>
+                                  <div className="mistake-orig">❌ {m.original}</div>
+                                  <div className="mistake-corr">✅ {m.correction}</div>
+                                  <div style={{fontSize:'0.85rem', opacity:0.8, marginTop: '4px'}}>{m.explanation}</div>
+                              </div>
                           </div>
-                      ))}</div>
+                      ))}
+                      </div>
                   </div>
               )}
           </div>
@@ -799,7 +931,7 @@ function App() {
 
             {state.step === 'result' && (
             <div className="result-view">
-                <ResultView grading={state.grading} />
+                <ResultView grading={state.grading} userText={state.writingInput} module={state.module} />
                 <button className="primary-btn" style={{marginTop:'20px'}} onClick={() => setState({ ...state, step: 'menu', history: [], turnCount: 0 })}>MENU</button>
             </div>
             )}
