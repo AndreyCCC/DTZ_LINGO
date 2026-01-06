@@ -58,15 +58,18 @@ interface Message {
   text: string;
 }
 
+interface Mistake {
+  original: string;
+  correction: string;
+  explanation: string;
+  realId?: number;
+}
+
 interface GradingResult {
   grade: 'A1' | 'A2' | 'B1' | 'Unter A1';
   reasoning: string;
   tips: string[];
-  mistakes: Array<{
-    original: string;
-    correction: string;
-    explanation: string;
-  }>;
+  mistakes: Mistake[];
 }
 
 interface ExamState {
@@ -657,8 +660,8 @@ function App() {
   };
 
   // --- Helper for Writing Grading ---
-  const renderAnnotatedText = (text: string, mistakes: Array<{original: string, correction: string, explanation: string}>) => {
-     if (!text) return { rendered: null, orderedMistakes: [] };
+  const renderAnnotatedText = (text: string, mistakes: Mistake[]) => {
+     if (!text) return { rendered: null, orderedMistakes: [] as Mistake[] };
 
      // 1. Find all occurrences and map them
      // We simply find the first occurrence that matches, but we need to be careful with duplicates.
@@ -680,7 +683,7 @@ function App() {
      // Let's iterate and find. To avoid finding the same index for two identical error words,
      // we'd need a used-indices map.
      
-     const foundMistakes: Array<{start: number, end: number, mistake: any}> = [];
+     const foundMistakes: Array<{start: number, end: number, mistake: Mistake}> = [];
      
      mappedMistakes.forEach(m => {
         // Clean original string (trim)
@@ -706,8 +709,8 @@ function App() {
      // Sort found mistakes by position
      foundMistakes.sort((a, b) => a.start - b.start);
 
-     // Re-assign IDs based on text order (1, 2, 3...)
-     const orderedMistakes = foundMistakes.map((fm, i) => ({
+     // Create list with positions for rendering
+     const localizedMistakes = foundMistakes.map((fm, i) => ({
          ...fm.mistake,
          realId: i + 1,
          start: fm.start,
@@ -718,7 +721,7 @@ function App() {
      const elements: ReactNode[] = [];
      let cursor = 0;
 
-     orderedMistakes.forEach((fm, i) => {
+     localizedMistakes.forEach((fm, i) => {
          // Text before
          if (fm.start > cursor) {
              elements.push(<span key={`txt-${i}`}>{text.substring(cursor, fm.start)}</span>);
@@ -740,7 +743,7 @@ function App() {
 
      return { 
          rendered: <div className="annotated-text-container">{elements}</div>, 
-         orderedMistakes 
+         orderedMistakes: localizedMistakes as Mistake[] 
      };
   };
 
@@ -751,14 +754,14 @@ function App() {
       const color = grading.grade === 'B1' ? '#58CC02' : grading.grade === 'A2' ? '#FFC800' : '#FF4B4B';
       
       let annotatedView = null;
-      let orderedMistakes: any[] = grading.mistakes || [];
+      let orderedMistakes: Mistake[] = grading.mistakes || [];
 
       // Special View for Writing
       if (module === 'schreiben' && userText && grading.mistakes) {
          const annotation = renderAnnotatedText(userText, grading.mistakes);
          annotatedView = annotation.rendered;
          // Use the re-ordered mistakes list which matches the bubbles
-         if (annotation.orderedMistakes.length > 0) {
+         if (annotation.orderedMistakes && annotation.orderedMistakes.length > 0) {
              orderedMistakes = annotation.orderedMistakes;
          }
       }
@@ -791,7 +794,7 @@ function App() {
               {orderedMistakes.length > 0 && (
                   <div className="result-section"><h3>Fehler & Korrekturen</h3>
                       <div className="mistakes-list">
-                      {orderedMistakes.map((m: any, i) => (
+                      {orderedMistakes.map((m, i) => (
                           <div key={i} className="mistake-item error-detail-card">
                               {module === 'schreiben' && m.realId && (
                                   <div className="error-number-circle">{m.realId}</div>
