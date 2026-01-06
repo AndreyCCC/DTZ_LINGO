@@ -50,6 +50,54 @@ const WRITING_PROMPTS = [
   }
 ];
 
+// New Planning Scenarios
+const PLANNING_SCENARIOS = [
+    {
+        topic: "Nachbarin Geburtstag",
+        situation: "Ihre Nachbarin Frau Petrova hat nächste Woche Geburtstag. Sie möchten ihr zusammen mit Ihrem Gesprächspartner ein kleines Geschenk kaufen und vielleicht etwas organisieren.",
+        points: [
+            "Was schenken? (Blumen, Kuchen...)",
+            "Wann treffen? (Tag, Uhrzeit)",
+            "Wo treffen?",
+            "Wie viel Geld ausgeben?",
+            "Wer besorgt was?"
+        ]
+    },
+    {
+        topic: "Picknick im Park",
+        situation: "Sie möchten am Wochenende mit Ihrem Gesprächspartner und anderen Freunden ein Picknick im Park machen. Planen Sie das zusammen.",
+        points: [
+            "Wann und Wo? (Treffpunkt)",
+            "Wer wird eingeladen?",
+            "Essen und Getränke (Wer bringt was mit?)",
+            "Was machen bei Regen?",
+            "Spiele oder Musik?"
+        ]
+    },
+    {
+        topic: "Kollegen besuchen",
+        situation: "Ein Arbeitskollege liegt im Krankenhaus. Sie wollen ihn gemeinsam besuchen.",
+        points: [
+            "Wann besuchen? (Besuchszeiten)",
+            "Wie hinkommen? (Auto, Bus)",
+            "Geschenk mitbringen? (Obst, Zeitschrift)",
+            "Wie lange bleiben?",
+            "Karte schreiben?"
+        ]
+    },
+    {
+        topic: "Abschiedsparty",
+        situation: "Ein Freund zieht in eine andere Stadt. Sie wollen eine kleine Abschiedsparty organisieren.",
+        points: [
+            "Wo feiern? (Zu Hause, Restaurant)",
+            "Wann? (Samstagabend?)",
+            "Geschenk zum Abschied?",
+            "Essen/Trinken organisieren",
+            "Musik/Playlist"
+        ]
+    }
+];
+
 // --- Types ---
 type ExamModule = 'vorstellung' | 'bild' | 'planung' | 'schreiben' | null;
 
@@ -79,13 +127,15 @@ interface ExamState {
   turnCount: number;
   currentImage?: string;
   imageSource?: 'unsplash' | 'fallback'; 
-  debugInfo?: string; // NEW: To show errors on screen
+  debugInfo?: string; 
   currentTopic?: string;
   grading?: GradingResult;
   // Writing specific
   writingTask?: { topic: string; text: string };
   writingInput?: string;
-  timeLeft?: number; // seconds
+  timeLeft?: number;
+  // Planning specific
+  planningTask?: { topic: string; situation: string; points: string[] };
 }
 
 interface UserStats {
@@ -463,29 +513,27 @@ function App() {
         return;
     }
 
-    // Oral Modules Logic
     let initialGreeting = "";
     let currentImage = "";
     let imageSource: 'unsplash' | 'fallback' | undefined;
     let debugInfo = "";
     let topic = "";
+    let planningTask: { topic: string; situation: string; points: string[] } | undefined;
 
     try {
       if (module === 'bild') {
         topic = EXAM_TOPICS[Math.floor(Math.random() * EXAM_TOPICS.length)];
-        console.log("Selected Topic:", topic);
-        
         const imgData = await fetchExamImage(topic);
         currentImage = imgData.url;
         imageSource = imgData.source;
         debugInfo = imgData.debug || "";
-
-        // Greeting without topic name
         initialGreeting = `Guten Tag. Teil 2: Bildbeschreibung. Bitte beschreiben Sie dieses Bild.`;
       } else if (module === 'vorstellung') {
         initialGreeting = "Guten Tag. Teil 1: Die Vorstellung. Erzählen Sie etwas über sich.";
-      } else {
-        initialGreeting = "Hallo. Teil 3: Gemeinsam planen. Ein Abschiedsfest. Haben Sie Vorschläge?";
+      } else if (module === 'planung') {
+        // Pick random planning scenario
+        planningTask = PLANNING_SCENARIOS[Math.floor(Math.random() * PLANNING_SCENARIOS.length)];
+        initialGreeting = `Hallo. Teil 3: Gemeinsam planen. Wir wollen zusammen folgendes planen: ${planningTask.topic}. Haben Sie Vorschläge?`;
       }
 
       if (isExamActiveRef.current) {
@@ -498,7 +546,8 @@ function App() {
             imageSource,
             debugInfo,
             currentTopic: topic,
-            grading: undefined
+            grading: undefined,
+            planningTask // Set the planning task state
         });
         await speakText(initialGreeting);
       }
@@ -528,7 +577,7 @@ function App() {
         } else {
              // Oral Grading
              const transcript = history.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
-             const topicInfo = state.currentTopic ? `(Thema: ${state.currentTopic})` : "";
+             const topicInfo = state.currentTopic ? `(Thema: ${state.currentTopic})` : (state.planningTask ? `(Planung: ${state.planningTask.topic})` : "");
              systemPrompt = `Du bist ein strenger DTZ Prüfer (Mündlich). Modul: ${state.module}. ${topicInfo} Analysiere das Transkript. Ignoriere Fehler bei der Zeichensetzung (Punkt, Komma), da es sich um ein Transkript gesprochener Sprache handelt.`;
              userContent = `Analysiere:\n${transcript}\n\nFormat JSON:\n{
                 "grade": "A1" | "A2" | "B1" | "Unter A1",
@@ -588,16 +637,28 @@ function App() {
         // --- Custom Logic for System Prompt based on Module ---
         let systemPrompt = "Du bist DTZ Prüfer. Antworte kurz (max 2 Sätze). Stelle eine Frage.";
         
-        const isFinalTurn = state.turnCount >= 2;
+        const isFinalTurn = (state.module !== 'planung' && state.turnCount >= 2) || (state.module === 'planung' && state.turnCount > 12); // Fallback limit for planning
 
         if (isFinalTurn) {
              systemPrompt = "Du bist DTZ Prüfer. Der Teil ist beendet. Reagiere kurz und freundlich auf das Gesagte. Sage dann exakt: 'Danke, wir berechnen jetzt Ihre Punkte.' Stelle KEINE neuen Fragen.";
         } else if (state.module === 'bild') {
-          if (state.turnCount === 0) {
-            systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Der Teilnehmer hat das Bild beschrieben. Stelle nun EINE konkrete Frage zu einem Detail, das man auf einem Bild zum Thema "${state.currentTopic}" sehen könnte.`;
-          } else if (state.turnCount === 1) {
-            systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Stelle nun EINE Frage zu den persönlichen Erfahrungen des Teilnehmers mit dem Thema "${state.currentTopic}".`;
-          }
+            if (state.turnCount === 0) {
+              systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Der Teilnehmer hat das Bild beschrieben. Stelle nun EINE konkrete Frage zu einem Detail, das man auf einem Bild zum Thema "${state.currentTopic}" sehen könnte.`;
+            } else if (state.turnCount === 1) {
+              systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Stelle nun EINE Frage zu den persönlichen Erfahrungen des Teilnehmers mit dem Thema "${state.currentTopic}".`;
+            }
+        } else if (state.module === 'planung' && state.planningTask) {
+             // STRICT PLANNING PROMPT
+             systemPrompt = `Du bist Prüfer beim DTZ 'Gemeinsam etwas planen'.
+             Situation: ${state.planningTask.situation}
+             Punkte die besprochen werden müssen: ${state.planningTask.points.join(', ')}.
+             
+             REGELN:
+             1. Gehe die Punkte logisch nacheinander durch.
+             2. WICHTIG: Nutze MAXIMAL 2 Sätze/Fragen für einen Punkt. Wenn der Teilnehmer einen Vorschlag gemacht hat oder den Punkt verstanden hat, stimme kurz zu und gehe SOFORT zum nächsten Punkt. Halte dich nicht lange auf.
+             3. Wenn der Teilnehmer den Punkt nach deinem zweiten Versuch immer noch nicht klärt, gehe trotzdem weiter zum nächsten Punkt.
+             4. Wenn alle Punkte besprochen sind, beende das Gespräch freundlich (z.B. "Gut, dann machen wir das so. Auf Wiedersehen") und sage NICHTS weiter.
+             5. Sei ein kooperativer Gesprächspartner, nicht nur ein Fragesteller. Mache auch selbst kurze Vorschläge.`;
         }
 
         // 2. Chat (GPT-4o-mini)
@@ -614,8 +675,11 @@ function App() {
         if (!isExamActiveRef.current) return;
 
         const newHistory: Message[] = [...state.history, { role: 'user', text }, { role: 'assistant', text: aiText }];
+        
+        // Detect end of planning module by AI phrase or high turn count
+        const isPlanningEnd = state.module === 'planung' && (aiText.toLowerCase().includes("auf wiedersehen") || aiText.toLowerCase().includes("wir berechnen") || state.turnCount > 10);
 
-        if (isFinalTurn) {
+        if (isFinalTurn || isPlanningEnd) {
           // Play the final audio
           await speakText(aiText);
           // Finish oral exam
@@ -902,6 +966,23 @@ function App() {
                     </div>
                 ) : (
                     <div className="exam-view">
+                        {/* PLANNING TASK DISPLAY */}
+                        {state.module === 'planung' && state.planningTask && (
+                           <div className="task-box" style={{marginBottom: '10px'}}>
+                              <div className="task-header">
+                                  <h3>{state.planningTask.topic}</h3>
+                              </div>
+                              <div className="task-content">
+                                  <p>{state.planningTask.situation}</p>
+                                  <ul style={{paddingLeft: '20px', marginTop: '5px', marginBottom: 0}}>
+                                      {state.planningTask.points.map((p, idx) => (
+                                          <li key={idx} style={{marginBottom: '4px'}}>{p}</li>
+                                      ))}
+                                  </ul>
+                              </div>
+                           </div>
+                        )}
+
                         {state.currentImage && (
                             <div className="exam-visual">
                                 <img src={state.currentImage} alt="exam" />
