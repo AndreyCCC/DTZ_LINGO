@@ -658,13 +658,11 @@ function App() {
 
   // --- Helper for Writing Grading ---
   const renderAnnotatedText = (text: string, mistakes: Array<{original: string, correction: string, explanation: string}>) => {
-     if (!text) return { rendered: null, mappedMistakes: [] };
+     if (!text) return { rendered: null, orderedMistakes: [] };
 
      // 1. Find all occurrences and map them
      // We simply find the first occurrence that matches, but we need to be careful with duplicates.
      // For simplicity and robustness with AI output, we will try to match "original" strings.
-     
-     let ranges: Array<{start: number, end: number, data: any}> = [];
      
      // Clone mistakes to avoiding mutation if needed, though not strictly necessary here
      // We want to sort mistakes by their position in text to handle them sequentially
@@ -753,7 +751,7 @@ function App() {
       const color = grading.grade === 'B1' ? '#58CC02' : grading.grade === 'A2' ? '#FFC800' : '#FF4B4B';
       
       let annotatedView = null;
-      let orderedMistakes = grading.mistakes || [];
+      let orderedMistakes: any[] = grading.mistakes || [];
 
       // Special View for Writing
       if (module === 'schreiben' && userText && grading.mistakes) {
