@@ -477,7 +477,8 @@ function App() {
         imageSource = imgData.source;
         debugInfo = imgData.debug || "";
 
-        initialGreeting = `Guten Tag. Teil 2: Bildbeschreibung. Thema: ${topic}. Was sehen Sie?`;
+        // Greeting without topic name
+        initialGreeting = `Guten Tag. Teil 2: Bildbeschreibung. Bitte beschreiben Sie dieses Bild.`;
       } else if (module === 'vorstellung') {
         initialGreeting = "Guten Tag. Teil 1: Die Vorstellung. Erzählen Sie etwas über sich.";
       } else {
@@ -771,14 +772,13 @@ function App() {
                         {state.currentImage && (
                             <div className="exam-visual">
                                 <img src={state.currentImage} alt="exam" />
-                                <div className="topic-overlay">
-                                    Thema: {state.currentTopic}
-                                    {state.debugInfo && state.debugInfo !== 'OK' && (
-                                        <div style={{color: '#FF4B4B', fontWeight: 'bold', marginTop: '4px', fontSize: '11px'}}>
+                                {state.debugInfo && state.debugInfo !== 'OK' && (
+                                    <div className="topic-overlay">
+                                        <div style={{color: '#FF4B4B', fontWeight: 'bold', fontSize: '11px'}}>
                                            ❌ DEBUG: {state.debugInfo}
                                         </div>
-                                    )}
-                                </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                         <div className="chat-area">
