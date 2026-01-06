@@ -3,10 +3,81 @@ import ReactDOM from 'react-dom/client';
 import OpenAI from 'openai';
 import { createClient, User } from '@supabase/supabase-js';
 import DottedGlowBackground from './components/DottedGlowBackground';
-import { ThinkingIcon, ArrowLeftIcon, SparklesIcon } from './components/Icons';
+import { ThinkingIcon, ArrowLeftIcon, SparklesIcon, GlobeIcon, PlayIcon, FacebookIcon, TelegramIcon, TikTokIcon } from './components/Icons';
 import { supabase } from './supabase';
 
 // --- Constants ---
+
+// Translations for Landing Page
+const TRANSLATIONS = {
+    de: {
+        heroTitle: "Bestehe den DTZ B1 mit KI",
+        heroSubtitle: "Dein persönlicher KI-Prüfer für Sprechen, Schreiben und Planen. Übe realistische Prüfungssituationen jederzeit.",
+        ctaStart: "JETZT STARTEN",
+        ctaLogin: "Einloggen",
+        feat1Title: "KI-Prüfer",
+        feat1Desc: "Führe realistische Dialoge wie in der echten mündlichen Prüfung.",
+        feat2Title: "Sofortiges Feedback",
+        feat2Desc: "Erhalte detaillierte Korrekturen für Grammatik und Wortschatz.",
+        feat3Title: "Fortschritt",
+        feat3Desc: "Verfolge dein Niveau von A1 bis B1 mit jeder Übung.",
+        madeWith: "Gemacht mit ❤️ für Deutschlerner"
+    },
+    en: {
+        heroTitle: "Pass the DTZ B1 with AI",
+        heroSubtitle: "Your personal AI Examiner for Speaking, Writing, and Planning. Practice realistic exam scenarios anytime.",
+        ctaStart: "START NOW",
+        ctaLogin: "Login",
+        feat1Title: "AI Examiner",
+        feat1Desc: "Engage in realistic dialogues just like the real oral exam.",
+        feat2Title: "Instant Feedback",
+        feat2Desc: "Get detailed corrections for grammar and vocabulary.",
+        feat3Title: "Progress",
+        feat3Desc: "Track your level from A1 to B1 with every exercise.",
+        madeWith: "Made with ❤️ for German Learners"
+    },
+    ru: {
+        heroTitle: "Сдай DTZ B1 с ИИ",
+        heroSubtitle: "Твой персональный ИИ-экзаменатор для говорения, письма и диалогов. Тренируйся в любое время.",
+        ctaStart: "НАЧАТЬ",
+        ctaLogin: "Войти",
+        feat1Title: "ИИ Экзаменатор",
+        feat1Desc: "Реалистичные диалоги, как на настоящем устном экзамене.",
+        feat2Title: "Мгновенная проверка",
+        feat2Desc: "Получай подробный разбор ошибок по грамматике и лексике.",
+        feat3Title: "Прогресс",
+        feat3Desc: "Отслеживай свой уровень от A1 до B1 с каждым заданием.",
+        madeWith: "Сделано с ❤️ для изучающих немецкий"
+    },
+    uk: {
+        heroTitle: "Склади DTZ B1 зі ШІ",
+        heroSubtitle: "Твій персональний ШІ-екзаменатор для мовлення, письма та діалогів. Тренуйся в будь-який час.",
+        ctaStart: "ПОЧАТИ",
+        ctaLogin: "Увійти",
+        feat1Title: "ШІ Екзаменатор",
+        feat1Desc: "Реалістичні діалоги, як на справжньому усному іспиті.",
+        feat2Title: "Миттєва перевірка",
+        feat2Desc: "Отримуй детальне виправлення помилок з граматики та лексики.",
+        feat3Title: "Прогрес",
+        feat3Desc: "Відстежуй свій рівень від A1 до B1 з кожним завданням.",
+        madeWith: "Зроблено з ❤️ для тих, хто вивчає німецьку"
+    },
+    ar: {
+        heroTitle: "DTZ B1 اجتاز امتحان",
+        heroSubtitle: "مدربك الشخصي بالذكاء الاصطناعي للمحادثة والكتابة. تدرب على سيناريوهات الامتحان الواقعية في أي وقت.",
+        ctaStart: "ابدأ الآن",
+        ctaLogin: "تسجيل الدخول",
+        feat1Title: "مدرب الذكاء الاصطناعي",
+        feat1Desc: "حوارات واقعية تماماً مثل الامتحان الشفهي الحقيقي.",
+        feat2Title: "تغذية راجعة فورية",
+        feat2Desc: "احصل على تصحيحات مفصلة للقواعد والمفردات.",
+        feat3Title: "التقدم",
+        feat3Desc: "تتبع مستواك من A1 إلى B1 مع كل تمرين.",
+        madeWith: "صنع بـ ❤️ لمتعلمي اللغة الألمانية"
+    }
+};
+
+type LangCode = 'de' | 'en' | 'ru' | 'uk' | 'ar';
 
 // Fallback images (Standard) - used if API fails
 const FALLBACK_IMAGES = [
@@ -122,7 +193,7 @@ interface GradingResult {
 
 interface ExamState {
   module: ExamModule;
-  step: 'auth' | 'menu' | 'exam' | 'result';
+  step: 'landing' | 'auth' | 'menu' | 'exam' | 'result'; // Added 'landing'
   history: Message[];
   turnCount: number;
   currentImage?: string;
@@ -262,11 +333,93 @@ const AuthScreen = ({ onLogin, onGuest }: { onLogin: (user: User) => void, onGue
   );
 };
 
+// --- Landing Page Component ---
+const LandingPage = ({ onStart, onLoginClick }: { onStart: () => void, onLoginClick: () => void }) => {
+    const [lang, setLang] = useState<LangCode>('de');
+    const t = TRANSLATIONS[lang];
+    const isRTL = lang === 'ar';
+
+    return (
+        <div className="landing-view" style={{ direction: isRTL ? 'rtl' : 'ltr' }}>
+            <nav className="landing-nav">
+                <div className="brand-logo">
+                    <SparklesIcon /> DTZ Lingo
+                </div>
+                <div className="nav-actions">
+                    <div className="lang-switch">
+                        {(['de', 'en', 'ru', 'uk', 'ar'] as LangCode[]).map(c => (
+                            <button 
+                                key={c} 
+                                className={`lang-btn ${lang === c ? 'active' : ''}`}
+                                onClick={() => setLang(c)}
+                            >
+                                {c.toUpperCase()}
+                            </button>
+                        ))}
+                    </div>
+                    <button className="secondary-btn" style={{margin:0, padding: '8px 16px', fontSize:'0.9rem'}} onClick={onLoginClick}>
+                        {t.ctaLogin}
+                    </button>
+                </div>
+            </nav>
+
+            <section className="landing-hero">
+                <h1 className="hero-title">{t.heroTitle}</h1>
+                <p className="hero-subtitle">{t.heroSubtitle}</p>
+                <button className="hero-cta-btn" onClick={onStart}>{t.ctaStart}</button>
+            </section>
+
+            <section className="video-section">
+                <div className="video-placeholder">
+                    <div className="play-circle">
+                        <PlayIcon />
+                    </div>
+                    {/* Placeholder text or effect */}
+                </div>
+            </section>
+
+            <section className="features-section">
+                <div className="features-grid">
+                    <div className="feature-card">
+                        <div className="feature-icon">🤖</div>
+                        <h3>{t.feat1Title}</h3>
+                        <p>{t.feat1Desc}</p>
+                    </div>
+                    <div className="feature-card">
+                        <div className="feature-icon">⚡</div>
+                        <h3>{t.feat2Title}</h3>
+                        <p>{t.feat2Desc}</p>
+                    </div>
+                    <div className="feature-card">
+                        <div className="feature-icon">📈</div>
+                        <h3>{t.feat3Title}</h3>
+                        <p>{t.feat3Desc}</p>
+                    </div>
+                </div>
+            </section>
+
+            <footer className="landing-footer">
+                <div className="footer-content">
+                    <div className="social-links">
+                         <a href="#" className="social-link"><TikTokIcon /></a>
+                         <a href="#" className="social-link"><TelegramIcon /></a>
+                         <a href="#" className="social-link"><FacebookIcon /></a>
+                    </div>
+                    <div style={{color: '#AFBCC4', fontSize: '0.9rem'}}>
+                        {t.madeWith}
+                    </div>
+                </div>
+            </footer>
+        </div>
+    );
+};
+
+
 // --- App ---
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [stats, setStats] = useState<UserStats>({ totalExams: 0, lastGrade: '-', modulesTaken: 0 });
-  const [state, setState] = useState<ExamState>({ module: null, step: 'auth', history: [], turnCount: 0 });
+  const [state, setState] = useState<ExamState>({ module: null, step: 'landing', history: [], turnCount: 0 }); // Start at landing
   
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -303,7 +456,7 @@ function App() {
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session?.user) {
                 setUser(session.user);
-                setState(s => ({ ...s, step: 'menu' }));
+                setState(s => ({ ...s, step: 'menu' })); // Auto-login to menu if session exists
                 fetchStats(session.user.id);
             }
         });
@@ -311,11 +464,13 @@ function App() {
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             if (session?.user) {
                 setUser(session.user);
-                setState(prev => prev.step === 'auth' ? { ...prev, step: 'menu' } : prev);
+                // If we were in landing or auth, go to menu. Otherwise stay (e.g. during exam)
+                setState(prev => (prev.step === 'auth' || prev.step === 'landing') ? { ...prev, step: 'menu' } : prev);
                 fetchStats(session.user.id);
             } else {
                 setUser(null);
-                setState(s => ({ ...s, step: 'auth' }));
+                // On logout, go to landing instead of auth
+                setState(s => ({ ...s, step: 'landing' }));
             }
         });
 
@@ -880,9 +1035,29 @@ function App() {
   return (
     <div className="dtz-app">
       <DottedGlowBackground />
-      {state.step === 'auth' ? (
-        <AuthScreen onLogin={(u) => setUser(u)} onGuest={handleGuestLogin} />
-      ) : (
+      {/* ROUTING LOGIC */}
+      {state.step === 'landing' && (
+          <LandingPage 
+            onStart={() => setState(s => ({ ...s, step: 'auth' }))}
+            onLoginClick={() => setState(s => ({ ...s, step: 'auth' }))}
+          />
+      )}
+
+      {state.step === 'auth' && (
+        <>
+            <button 
+                className="back-btn" 
+                style={{position: 'absolute', top: '20px', left: '20px', zIndex: 60}} 
+                onClick={() => setState(s => ({ ...s, step: 'landing' }))}
+            >
+                <ArrowLeftIcon />
+            </button>
+            <AuthScreen onLogin={(u) => setUser(u)} onGuest={handleGuestLogin} />
+        </>
+      )}
+
+      {/* MAIN APP CONTENT (Menu, Exam, Result) */}
+      {(state.step === 'menu' || state.step === 'exam' || state.step === 'result') && (
         <>
         <header className="dtz-header">
             {state.step !== 'menu' && <button className="back-btn" onClick={stopExam}><ArrowLeftIcon /></button>}
@@ -894,7 +1069,7 @@ function App() {
                 )}
             </div>
             {state.step === 'exam' ? <button className="finish-btn" onClick={stopExam}>ABBRUCH</button> : 
-                (user && <button className="finish-btn" onClick={() => { if(user.id === 'guest') { setUser(null); setState(s=>({...s, step:'auth'})); } else { supabase?.auth.signOut(); } }}>LOGOUT</button>)}
+                (user && <button className="finish-btn" onClick={() => { if(user.id === 'guest') { setUser(null); setState(s=>({...s, step:'landing'})); } else { supabase?.auth.signOut(); } }}>LOGOUT</button>)}
         </header>
 
         <main className="dtz-main">
