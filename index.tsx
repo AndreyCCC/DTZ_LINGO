@@ -548,17 +548,16 @@ function App() {
       }
   };
 
-  const saveResult = async (result: GradingResult, module: ExamModule) => {
+  const saveResult = async (result: GradingResult, module: ExamModule, transcriptContent: any) => {
       if (!supabase || !user || user.id === 'guest') return;
       
       const duration = state.startTime ? Math.floor((Date.now() - state.startTime) / 1000) : 0;
       const topic = state.currentTopic || state.writingTask?.topic || state.planningTask?.topic || "Unbekannt";
 
-      // Prepare transcript based on module
-      let transcriptData: any = state.history;
-      if (module === 'schreiben') {
-          transcriptData = [{ role: 'user', text: state.writingInput }];
-      }
+      console.log("Saving result to DB:", {
+          module,
+          transcriptContent
+      });
 
       // Save to new table
       const { error } = await supabase.from('exam_sessions').insert({
@@ -567,7 +566,7 @@ function App() {
           topic: topic,
           grade: result.grade,
           duration_seconds: duration,
-          transcript: transcriptData,
+          transcript: transcriptContent, // Use explicitly passed content
           feedback_data: result, // Store the whole result object
           created_at: new Date().toISOString()
       });
@@ -795,10 +794,14 @@ function App() {
         let systemPrompt = "";
         let userContent = "";
 
+        // Prepare the transcript explicitly for saving later
+        let transcriptPayload: any = history;
+
         if (state.module === 'schreiben' && writtenText) {
             const task = state.writingTask?.text || "Unbekannte Aufgabe";
             systemPrompt = "Du bist ein strenger DTZ Prüfer für den schriftlichen Teil (Brief/E-Mail). Bewerte den Text. Achte auf: 1. Erfüllung der 3 Leitpunkte (sehr wichtig). 2. Grammatik und Wortschatz (B1 Niveau). 3. Kommunikative Gestaltung (Anrede, Grußformel, Logik).";
             userContent = `Aufgabe: ${task}\n\nSchüler-Text:\n${writtenText}`;
+            transcriptPayload = [{ role: 'user', text: writtenText }];
         } else {
              // Oral Grading
              const transcript = history.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
@@ -843,7 +846,8 @@ function App() {
         
         if (isExamActiveRef.current) {
             setState(prev => ({ ...prev, grading: result, step: 'result' }));
-            saveResult(result, state.module);
+            // Pass the explicitly captured transcript payload
+            saveResult(result, state.module, transcriptPayload);
         }
     } catch (e) {
         console.error(e);
