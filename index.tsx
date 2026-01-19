@@ -480,7 +480,7 @@ function App() {
 
   useEffect(() => {
     // 🚀 VERSION CHECK: Show this in console to verify new code is running
-    console.log("🚀 STARTING APP - VERSION: EXAM_SESSIONS_V2 - DB TARGET: exam_sessions");
+    console.log("🚀 STARTING APP - VERSION: EXAM_SESSIONS_V3 - ROBUST DB LINKING");
 
     // Check initial session
     if (supabase) {
@@ -552,7 +552,19 @@ function App() {
   };
 
   const saveResult = async (result: GradingResult, module: ExamModule, transcriptContent: any) => {
-      if (!supabase || !user || user.id === 'guest') return;
+      // 1. Check if we should save
+      if (!supabase) {
+          console.warn("Skipping save: No Supabase client");
+          return;
+      }
+      if (!user) {
+          console.warn("Skipping save: No user");
+          return;
+      }
+      if (user.id === 'guest') {
+          console.log("Skipping save: Guest user data is not persisted.");
+          return;
+      }
       
       const duration = state.startTime ? Math.floor((Date.now() - state.startTime) / 1000) : 0;
       const topic = state.currentTopic || state.writingTask?.topic || state.planningTask?.topic || "Unbekannt";
@@ -562,20 +574,26 @@ function App() {
           transcriptContent
       });
 
-      // Save to new table
+      // 2. Attempt Save
       const { error } = await supabase.from('exam_sessions').insert({
           user_id: user.id,
           module: module,
           topic: topic,
           grade: result.grade,
           duration_seconds: duration,
-          transcript: transcriptContent, // Use explicitly passed content
-          feedback_data: result, // Store the whole result object
+          transcript: transcriptContent, 
+          feedback_data: result,
           created_at: new Date().toISOString()
       });
 
-      if (error) console.error("Error saving result:", error);
-      fetchStats(user.id);
+      // 3. Handle Errors explicitly
+      if (error) {
+          console.error("FATAL DB ERROR:", error);
+          alert(`Fehler beim Speichern des Ergebnisses!\n\nDetails: ${error.message}\nCode: ${error.code}`);
+      } else {
+          console.log("✅ Save successful!");
+          fetchStats(user.id);
+      }
   };
 
   useEffect(() => {
