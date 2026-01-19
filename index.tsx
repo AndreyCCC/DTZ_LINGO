@@ -435,7 +435,14 @@ function App() {
 
   useEffect(() => {
     // 🚀 VERSION CHECK: Show this in console to verify new code is running
-    console.log("🚀 STARTING APP - VERSION: OPENAI_RESTORED");
+    console.log("🚀 STARTING APP - VERSION: OPENAI_KEY_DEBUG");
+    
+    // Debug API Key presence (safe check)
+    if (process.env.API_KEY && process.env.API_KEY.length > 10) {
+        console.log("✅ API Key is present (Length: " + process.env.API_KEY.length + ")");
+    } else {
+        console.error("❌ API Key is MISSING or too short.");
+    }
 
     // Check initial session
     if (supabase) {
@@ -666,7 +673,7 @@ function App() {
   const handleStartExam = async (module: ExamModule) => {
     if (isProcessing) return;
     if (!process.env.API_KEY) {
-        setError("API Key fehlt. Bitte Konfiguration prüfen.");
+        setError("API Key fehlt. Bitte Konfiguration prüfen (Vercel ENV Settings).");
         return;
     }
 
