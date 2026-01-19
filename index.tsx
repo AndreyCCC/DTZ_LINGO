@@ -480,7 +480,7 @@ function App() {
 
   useEffect(() => {
     // 🚀 VERSION CHECK: Show this in console to verify new code is running
-    console.log("🚀 STARTING APP - VERSION: EXAM_SESSIONS_V3 - ROBUST DB LINKING");
+    console.log("🚀 STARTING APP - VERSION: EXAM_SESSIONS_V3.1 - CONFIRMED");
 
     // Check initial session
     if (supabase) {
@@ -535,14 +535,22 @@ function App() {
 
   const fetchStats = async (userId: string) => {
       if (!supabase || userId === 'guest') return;
+      
+      console.log("Fetching stats from exam_sessions...");
+
       // Fetch from new exam_sessions table
       const { data, error } = await supabase
         .from('exam_sessions')
         .select('grade')
         .eq('user_id', userId)
         .order('created_at', { ascending: true });
+
+      if (error) {
+          console.error("Error fetching stats:", error);
+      }
       
       if (data) {
+          console.log("Stats loaded:", data.length);
           setStats({
               totalExams: data.length,
               lastGrade: data.length > 0 ? data[data.length - 1].grade : '-',
@@ -1187,6 +1195,13 @@ function App() {
                         <div className="stat-pill">⭐ Letzte Note: {stats.lastGrade}</div>
                     </div>
                 </div>
+                
+                {stats.totalExams === 0 && (
+                    <p style={{color: 'var(--duo-text-sec)', fontSize: '0.9rem', marginTop: '-10px', marginBottom: '20px'}}>
+                        Noch keine Ergebnisse vorhanden. Starten Sie jetzt!
+                    </p>
+                )}
+
                 <div className="module-grid">
                 {(['vorstellung', 'bild', 'planung', 'schreiben'] as const).map(m => (
                     <button key={m} className="module-card" onClick={() => handleStartExam(m)} disabled={isProcessing}>
@@ -1204,6 +1219,10 @@ function App() {
                     {isProcessing && state.module === m && <ThinkingIcon />}
                     </button>
                 ))}
+                </div>
+                
+                <div style={{marginTop: '40px', color: '#37464F', fontSize: '0.8rem'}}>
+                    App Version: 3.1 (DB: exam_sessions)
                 </div>
             </div>
             )}
