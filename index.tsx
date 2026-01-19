@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, Component, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
-import { GoogleGenAI, Type, Modality } from "@google/genai";
+import OpenAI from "openai";
 import { User } from '@supabase/supabase-js';
 import DottedGlowBackground from './components/DottedGlowBackground';
 import { ThinkingIcon, ArrowLeftIcon, SparklesIcon, PlayIcon, FacebookIcon, TelegramIcon, TikTokIcon } from './components/Icons';
@@ -51,7 +51,7 @@ const TRANSLATIONS = {
     },
     uk: {
         heroTitle: "Склади DTZ B1 зі ШІ",
-        heroSubtitle: "Твій персональний ШІ-екзаменатор для мовлення, письма та діалогів. Тренуйся в будь-який час.",
+        heroSubtitle: "Твій персональный ШІ-екзаменатор для мовлення, письма та діалогів. Тренуйся в будь-який час.",
         ctaStart: "ПОЧАТИ",
         ctaLogin: "Увійти",
         feat1Title: "ШІ Екзаменатор",
@@ -216,51 +216,6 @@ interface UserStats {
   lastGrade: string;
   modulesTaken: number;
 }
-
-// --- Audio Helpers ---
-
-function decodeBase64(base64: string) {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
-
-function decodeAudioData(
-  data: Uint8Array,
-  ctx: AudioContext,
-  sampleRate: number,
-  numChannels: number,
-): AudioBuffer {
-  const dataInt16 = new Int16Array(data.buffer);
-  const frameCount = dataInt16.length / numChannels;
-  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-
-  for (let channel = 0; channel < numChannels; channel++) {
-    const channelData = buffer.getChannelData(channel);
-    for (let i = 0; i < frameCount; i++) {
-      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
-    }
-  }
-  return buffer;
-}
-
-const blobToBase64 = (blob: Blob): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-        const res = reader.result as string;
-        // Handle data:audio/webm;base64,..... prefix if present
-        const base64String = res.includes(',') ? res.split(',')[1] : res;
-        resolve(base64String);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-};
 
 // --- Error Boundary ---
 interface ErrorBoundaryProps {
@@ -476,11 +431,11 @@ function App() {
   const audioChunksRef = useRef<Blob[]>([]);
   
   const isExamActiveRef = useRef<boolean>(false);
-  const outputAudioContextRef = useRef<AudioContext | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     // 🚀 VERSION CHECK: Show this in console to verify new code is running
-    console.log("🚀 STARTING APP - VERSION: EXAM_SESSIONS_V3.1 - CONFIRMED");
+    console.log("🚀 STARTING APP - VERSION: OPENAI_RESTORED");
 
     // Check initial session
     if (supabase) {
@@ -609,9 +564,9 @@ function App() {
   }, []);
 
   const stopAudio = () => {
-    if (outputAudioContextRef.current) {
-        outputAudioContextRef.current.close();
-        outputAudioContextRef.current = null;
+    if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
     }
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   };
@@ -625,33 +580,6 @@ function App() {
     setState({ module: null, step: 'menu', history: [], turnCount: 0 });
   };
 
-  const playAudioDataFromBase64 = async (base64Audio: string) => {
-      if (!outputAudioContextRef.current) {
-          outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 24000});
-      }
-      const ctx = outputAudioContextRef.current;
-      if (ctx.state === 'suspended') {
-          await ctx.resume();
-      }
-      
-      try {
-          // Decode raw PCM from Gemini TTS
-          const audioBuffer = decodeAudioData(
-              decodeBase64(base64Audio),
-              ctx,
-              24000,
-              1
-          );
-          
-          const source = ctx.createBufferSource();
-          source.buffer = audioBuffer;
-          source.connect(ctx.destination);
-          source.start();
-      } catch (e) {
-          console.error("Audio playback error", e);
-      }
-  };
-
   const speakText = async (text: string) => {
     // No speaking for writing module
     if (state.module === 'schreiben') return;
@@ -663,24 +591,18 @@ function App() {
     }
     stopAudio();
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text }] }],
-        config: {
-            responseModalities: [Modality.AUDIO], 
-            speechConfig: {
-                voiceConfig: {
-                    prebuiltVoiceConfig: { voiceName: 'Kore' },
-                },
-            },
-        },
+      const openai = new OpenAI({ apiKey: process.env.API_KEY, dangerouslyAllowBrowser: true });
+      const mp3 = await openai.audio.speech.create({
+          model: "tts-1",
+          voice: "alloy",
+          input: text,
       });
 
-      const base64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (base64 && isExamActiveRef.current) {
-          await playAudioDataFromBase64(base64);
-      }
+      const blob = await mp3.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.play();
     } catch (e: any) {
       console.error("TTS Error:", e);
       speakFallback(text);
@@ -838,39 +760,18 @@ function App() {
              systemPrompt = `Du bist ein strenger DTZ Prüfer (Mündlich). Modul: ${state.module}. ${topicInfo} Analysiere das Transkript. Ignoriere Fehler bei der Zeichensetzung.`;
              userContent = `Analysiere:\n${transcript}`;
         }
-        
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const completion = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: [
-                { role: 'user', parts: [{ text: systemPrompt + "\n\n" + userContent }] }
-            ],
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        grade: { type: Type.STRING },
-                        reasoning: { type: Type.STRING },
-                        tips: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        mistakes: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    original: { type: Type.STRING },
-                                    correction: { type: Type.STRING },
-                                    explanation: { type: Type.STRING },
-                                }
-                            }
-                        }
-                    },
-                    required: ['grade', 'reasoning', 'tips', 'mistakes']
-                }
-            }
+
+        const openai = new OpenAI({ apiKey: process.env.API_KEY, dangerouslyAllowBrowser: true });
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            response_format: { type: "json_object" },
+            messages: [
+                { role: "system", content: systemPrompt + "\nGib das Ergebnis als JSON im Format {grade, reasoning, tips: [], mistakes: [{original, correction, explanation}]} zurück." },
+                { role: "user", content: userContent }
+            ]
         });
 
-        const content = completion.text || "{}";
+        const content = completion.choices[0].message.content || "{}";
         const result = JSON.parse(content) as GradingResult;
         
         if (isExamActiveRef.current) {
@@ -890,18 +791,13 @@ function App() {
     if (!process.env.API_KEY) return;
     setIsProcessing(true);
     try {
-        // 1. Transcribe (Multimodal)
-        const base64Audio = await blobToBase64(audioBlob);
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const openai = new OpenAI({ apiKey: process.env.API_KEY, dangerouslyAllowBrowser: true });
         
-        const transResp = await ai.models.generateContent({
-            model: 'gemini-flash-latest',
-            contents: {
-                parts: [
-                    { inlineData: { mimeType: 'audio/webm', data: base64Audio } },
-                    { text: "Transcribe this audio verbatim. Output only the text." }
-                ]
-            }
+        // 1. STT (Whisper)
+        const audioFile = new File([audioBlob], "input.webm", { type: "audio/webm" });
+        const transResp = await openai.audio.transcriptions.create({
+            file: audioFile,
+            model: "whisper-1",
         });
 
         const text = transResp.text?.trim();
@@ -918,7 +814,7 @@ function App() {
         // --- Custom Logic for System Prompt based on Module ---
         let systemPrompt = "Du bist DTZ Prüfer. Antworte kurz (max 2 Sätze). Stelle eine Frage.";
         
-        const isFinalTurn = (state.module !== 'planung' && state.turnCount >= 2) || (state.module === 'planung' && state.turnCount > 12); // Fallback limit for planning
+        const isFinalTurn = (state.module !== 'planung' && state.turnCount >= 2) || (state.module === 'planung' && state.turnCount > 12); 
 
         if (isFinalTurn) {
              systemPrompt = "Du bist DTZ Prüfer. Der Teil ist beendet. Reagiere kurz und freundlich auf das Gesagte. Sage dann exakt: 'Danke, wir berechnen jetzt Ihre Punkte.' Stelle KEINE neuen Fragen.";
@@ -942,36 +838,50 @@ function App() {
              5. Sei ein kooperativer Gesprächspartner, nicht nur ein Fragesteller. Mache auch selbst kurze Vorschläge.`;
         }
 
-        // 2. Chat (Gemini 3 Flash for Reasoning)
-        // Construct history for Gemini
-        const chatHistory = state.history.map(m => ({
-            role: m.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: m.text }]
-        }));
+        // 2. Chat (GPT-4o-mini)
+        // Construct history
+        const messages: any[] = [
+            { role: "system", content: systemPrompt }
+        ];
 
-        const chatResp = await ai.models.generateContent({
-            model: "gemini-3-flash-preview", 
-            contents: [
-                ...chatHistory,
-                { role: "user", parts: [{ text: text }] }
-            ],
-            config: {
-                systemInstruction: systemPrompt
-            }
+        // If module is 'bild' and we have an image, add it to history for context if needed, 
+        // or just rely on system prompt context. 
+        // Since GPT-4o-mini is multimodal, we can pass the image url in the first user message if this is the start.
+        if (state.module === 'bild' && state.turnCount === 0 && state.currentImage) {
+             // Add image context to the first turn
+             // Note: In this simplified flow, we are just appending text history. 
+             // Ideally we would insert the image message here.
+             // For now, let's keep text-only history but system prompt knows the topic.
+        }
+
+        state.history.forEach(m => messages.push({ role: m.role, content: m.text }));
+        messages.push({ role: "user", content: text });
+
+        // If it is the very first turn of 'bild', let's attach the image URL to the user message content
+        if (state.module === 'bild' && state.turnCount === 0 && state.currentImage) {
+             const lastMsg = messages[messages.length - 1];
+             lastMsg.content = [
+                 { type: "text", text: text },
+                 { type: "image_url", image_url: { url: state.currentImage } }
+             ];
+        }
+
+        const chatResp = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: messages,
+            max_tokens: 150
         });
 
-        const aiText = chatResp.text || "Bitte wiederholen.";
+        const aiText = chatResp.choices[0].message.content || "Bitte wiederholen.";
         if (!isExamActiveRef.current) return;
 
         const newHistory: Message[] = [...state.history, { role: 'user', text }, { role: 'assistant', text: aiText }];
         
-        // Detect end of planning module by AI phrase or high turn count
+        // Detect end of planning
         const isPlanningEnd = state.module === 'planung' && (aiText.toLowerCase().includes("auf wiedersehen") || aiText.toLowerCase().includes("wir berechnen") || state.turnCount > 10);
 
         if (isFinalTurn || isPlanningEnd) {
-          // Play the final audio
           await speakText(aiText);
-          // Finish oral exam
           generateGrading(newHistory);
         } else {
           setState(prev => ({ ...prev, history: newHistory, turnCount: prev.turnCount + 1 }));
@@ -1222,7 +1132,7 @@ function App() {
                 </div>
                 
                 <div style={{marginTop: '40px', color: '#37464F', fontSize: '0.8rem'}}>
-                    App Version: 3.1 (DB: exam_sessions)
+                    App Version: 3.2 (OPENAI RESTORED)
                 </div>
             </div>
             )}
