@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, Component, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
-import OpenAI from 'openai';
-import { createClient, User } from '@supabase/supabase-js';
+import { GoogleGenAI, Type, Modality } from "@google/genai";
+import { User } from '@supabase/supabase-js';
 import DottedGlowBackground from './components/DottedGlowBackground';
-import { ThinkingIcon, ArrowLeftIcon, SparklesIcon, GlobeIcon, PlayIcon, FacebookIcon, TelegramIcon, TikTokIcon } from './components/Icons';
+import { ThinkingIcon, ArrowLeftIcon, SparklesIcon, PlayIcon, FacebookIcon, TelegramIcon, TikTokIcon } from './components/Icons';
 import { supabase } from './supabase';
 
 // --- Constants ---
@@ -38,7 +38,7 @@ const TRANSLATIONS = {
     },
     ru: {
         heroTitle: "Сдай DTZ B1 с ИИ",
-        heroSubtitle: "Твой персональный ИИ-экзаменатор для говорения, письма и диалогов. Тренируйся в любое время.",
+        heroSubtitle: "Твой персональный ИИ-экзаменатор для говорения, письма и диалогов. Тренуйся в любое время.",
         ctaStart: "НАЧАТЬ",
         ctaLogin: "Войти",
         feat1Title: "ИИ Экзаменатор",
@@ -193,7 +193,7 @@ interface GradingResult {
 
 interface ExamState {
   module: ExamModule;
-  step: 'landing' | 'auth' | 'menu' | 'exam' | 'result'; // Added 'landing'
+  step: 'landing' | 'auth' | 'menu' | 'exam' | 'result'; 
   history: Message[];
   turnCount: number;
   currentImage?: string;
@@ -207,6 +207,8 @@ interface ExamState {
   timeLeft?: number;
   // Planning specific
   planningTask?: { topic: string; situation: string; points: string[] };
+  // Analytics
+  startTime?: number;
 }
 
 interface UserStats {
@@ -214,6 +216,51 @@ interface UserStats {
   lastGrade: string;
   modulesTaken: number;
 }
+
+// --- Audio Helpers ---
+
+function decodeBase64(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): AudioBuffer {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
+
+const blobToBase64 = (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+        const res = reader.result as string;
+        // Handle data:audio/webm;base64,..... prefix if present
+        const base64String = res.includes(',') ? res.split(',')[1] : res;
+        resolve(base64String);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
 
 // --- Error Boundary ---
 interface ErrorBoundaryProps {
@@ -427,28 +474,9 @@ function App() {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  // Use HTMLAudioElement for playback with OpenAI URL
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  
   const isExamActiveRef = useRef<boolean>(false);
-
-  // Initialize OpenAI
-  const openaiRef = useRef<OpenAI | null>(null);
-
-  useEffect(() => {
-    if (process.env.OPENAI_API_KEY) {
-        try {
-            openaiRef.current = new OpenAI({
-                apiKey: process.env.OPENAI_API_KEY,
-                dangerouslyAllowBrowser: true // Required for client-side use
-            });
-            console.log("OpenAI initialized");
-        } catch (e) {
-            console.error("OpenAI init error", e);
-        }
-    } else {
-        console.error("OPENAI_API_KEY is missing");
-    }
-  }, []);
+  const outputAudioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     // Check initial session
@@ -504,10 +532,12 @@ function App() {
 
   const fetchStats = async (userId: string) => {
       if (!supabase || userId === 'guest') return;
+      // Fetch from new exam_sessions table
       const { data, error } = await supabase
-        .from('exam_results')
+        .from('exam_sessions')
         .select('grade')
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true });
       
       if (data) {
           setStats({
@@ -521,12 +551,28 @@ function App() {
   const saveResult = async (result: GradingResult, module: ExamModule) => {
       if (!supabase || !user || user.id === 'guest') return;
       
-      await supabase.from('exam_results').insert({
+      const duration = state.startTime ? Math.floor((Date.now() - state.startTime) / 1000) : 0;
+      const topic = state.currentTopic || state.writingTask?.topic || state.planningTask?.topic || "Unbekannt";
+
+      // Prepare transcript based on module
+      let transcriptData: any = state.history;
+      if (module === 'schreiben') {
+          transcriptData = [{ role: 'user', text: state.writingInput }];
+      }
+
+      // Save to new table
+      const { error } = await supabase.from('exam_sessions').insert({
           user_id: user.id,
           module: module,
+          topic: topic,
           grade: result.grade,
-          feedback: result.reasoning
+          duration_seconds: duration,
+          transcript: transcriptData,
+          feedback_data: result, // Store the whole result object
+          created_at: new Date().toISOString()
       });
+
+      if (error) console.error("Error saving result:", error);
       fetchStats(user.id);
   };
 
@@ -535,9 +581,9 @@ function App() {
   }, []);
 
   const stopAudio = () => {
-    if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
+    if (outputAudioContextRef.current) {
+        outputAudioContextRef.current.close();
+        outputAudioContextRef.current = null;
     }
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   };
@@ -551,34 +597,61 @@ function App() {
     setState({ module: null, step: 'menu', history: [], turnCount: 0 });
   };
 
+  const playAudioDataFromBase64 = async (base64Audio: string) => {
+      if (!outputAudioContextRef.current) {
+          outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 24000});
+      }
+      const ctx = outputAudioContextRef.current;
+      if (ctx.state === 'suspended') {
+          await ctx.resume();
+      }
+      
+      try {
+          // Decode raw PCM from Gemini TTS
+          const audioBuffer = decodeAudioData(
+              decodeBase64(base64Audio),
+              ctx,
+              24000,
+              1
+          );
+          
+          const source = ctx.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(ctx.destination);
+          source.start();
+      } catch (e) {
+          console.error("Audio playback error", e);
+      }
+  };
+
   const speakText = async (text: string) => {
     // No speaking for writing module
     if (state.module === 'schreiben') return;
 
     console.log("Speaking text:", text);
-    if (!isExamActiveRef.current || !openaiRef.current) {
-        console.warn("Cannot speak: exam not active or openai not ready");
+    if (!isExamActiveRef.current || !process.env.API_KEY) {
+        console.warn("Cannot speak: exam not active or API key missing");
         return;
     }
     stopAudio();
     try {
-      const mp3 = await openaiRef.current.audio.speech.create({
-          model: "tts-1",
-          voice: "alloy",
-          input: text,
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text }] }],
+        config: {
+            responseModalities: [Modality.AUDIO], 
+            speechConfig: {
+                voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: 'Kore' },
+                },
+            },
+        },
       });
 
-      const buffer = await mp3.arrayBuffer();
-      const blob = new Blob([buffer], { type: "audio/mpeg" });
-      const url = URL.createObjectURL(blob);
-      
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      audio.onended = () => { URL.revokeObjectURL(url); };
-      
-      if (isExamActiveRef.current) {
-          await audio.play();
-          console.log("Audio started");
+      const base64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64 && isExamActiveRef.current) {
+          await playAudioDataFromBase64(base64);
       }
     } catch (e: any) {
       console.error("TTS Error:", e);
@@ -602,8 +675,8 @@ function App() {
 
   // --- REVISED IMAGE FETCHING ---
   const fetchExamImage = async (topic: string): Promise<{url: string, source: 'unsplash' | 'fallback', debug?: string}> => {
-      // 1. Get Key
-      const accessKey = process.env.UNSPLASH_ACCESS_KEY || import.meta.env.VITE_UNSPLASH_ACCESS_KEY;
+      // 1. Get Key from process.env (mapped in vite.config.ts)
+      const accessKey = process.env.UNSPLASH_ACCESS_KEY;
       
       const fallbackUrl = FALLBACK_IMAGES[Math.floor(Math.random() * FALLBACK_IMAGES.length)];
 
@@ -642,7 +715,7 @@ function App() {
 
   const handleStartExam = async (module: ExamModule) => {
     if (isProcessing) return;
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.API_KEY) {
         setError("API Key fehlt. Bitte Konfiguration prüfen.");
         return;
     }
@@ -662,7 +735,8 @@ function App() {
             grading: undefined,
             writingTask: prompt,
             writingInput: '',
-            timeLeft: 30 * 60 // 30 minutes in seconds
+            timeLeft: 30 * 60, // 30 minutes in seconds
+            startTime: Date.now() // Track start time
         });
         setIsProcessing(false);
         return;
@@ -702,7 +776,8 @@ function App() {
             debugInfo,
             currentTopic: topic,
             grading: undefined,
-            planningTask // Set the planning task state
+            planningTask,
+            startTime: Date.now() // Track start time
         });
         await speakText(initialGreeting);
       }
@@ -714,7 +789,7 @@ function App() {
   };
 
   const generateGrading = async (history: Message[], writtenText?: string) => {
-    if (!openaiRef.current) return;
+    if (!process.env.API_KEY) return;
     setIsProcessing(true);
     try {
         let systemPrompt = "";
@@ -723,36 +798,48 @@ function App() {
         if (state.module === 'schreiben' && writtenText) {
             const task = state.writingTask?.text || "Unbekannte Aufgabe";
             systemPrompt = "Du bist ein strenger DTZ Prüfer für den schriftlichen Teil (Brief/E-Mail). Bewerte den Text. Achte auf: 1. Erfüllung der 3 Leitpunkte (sehr wichtig). 2. Grammatik und Wortschatz (B1 Niveau). 3. Kommunikative Gestaltung (Anrede, Grußformel, Logik).";
-            userContent = `Aufgabe: ${task}\n\nSchüler-Text:\n${writtenText}\n\nFormat JSON:\n{
-                "grade": "A1" | "A2" | "B1" | "Unter A1",
-                "reasoning": "Kurzes Feedback (Deutsch)",
-                "tips": ["Tipp 1", "Tipp 2"],
-                "mistakes": [{"original": "Fehlerhafter Satzteil (genau wie im Text)", "correction": "Korrektur", "explanation": "Erklärung"}]
-            }`;
+            userContent = `Aufgabe: ${task}\n\nSchüler-Text:\n${writtenText}`;
         } else {
              // Oral Grading
              const transcript = history.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
              const topicInfo = state.currentTopic ? `(Thema: ${state.currentTopic})` : (state.planningTask ? `(Planung: ${state.planningTask.topic})` : "");
-             systemPrompt = `Du bist ein strenger DTZ Prüfer (Mündlich). Modul: ${state.module}. ${topicInfo} Analysiere das Transkript. Ignoriere Fehler bei der Zeichensetzung (Punkt, Komma), da es sich um ein Transkript gesprochener Sprache handelt.`;
-             userContent = `Analysiere:\n${transcript}\n\nFormat JSON:\n{
-                "grade": "A1" | "A2" | "B1" | "Unter A1",
-                "reasoning": "string",
-                "tips": ["string"],
-                "mistakes": [{"original": "string", "correction": "string", "explanation": "string"}]
-            }`;
+             systemPrompt = `Du bist ein strenger DTZ Prüfer (Mündlich). Modul: ${state.module}. ${topicInfo} Analysiere das Transkript. Ignoriere Fehler bei der Zeichensetzung.`;
+             userContent = `Analysiere:\n${transcript}`;
         }
         
-        const completion = await openaiRef.current.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userContent }
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const completion = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: [
+                { role: 'user', parts: [{ text: systemPrompt + "\n\n" + userContent }] }
             ],
-            response_format: { type: "json_object" }
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        grade: { type: Type.STRING },
+                        reasoning: { type: Type.STRING },
+                        tips: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        mistakes: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    original: { type: Type.STRING },
+                                    correction: { type: Type.STRING },
+                                    explanation: { type: Type.STRING },
+                                }
+                            }
+                        }
+                    },
+                    required: ['grade', 'reasoning', 'tips', 'mistakes']
+                }
+            }
         });
 
-        const content = completion.choices[0].message.content;
-        const result = JSON.parse(content || "{}") as GradingResult;
+        const content = completion.text || "{}";
+        const result = JSON.parse(content) as GradingResult;
         
         if (isExamActiveRef.current) {
             setState(prev => ({ ...prev, grading: result, step: 'result' }));
@@ -767,18 +854,24 @@ function App() {
   };
 
   const processUserResponse = async (audioBlob: Blob) => {
-    if (!openaiRef.current) return;
+    if (!process.env.API_KEY) return;
     setIsProcessing(true);
     try {
-        // 1. Transcribe (Whisper)
-        const file = new File([audioBlob], "recording.webm", { type: "audio/webm" });
-        const transcription = await openaiRef.current.audio.transcriptions.create({
-            file,
-            model: "whisper-1",
-            language: "de"
+        // 1. Transcribe (Multimodal)
+        const base64Audio = await blobToBase64(audioBlob);
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        
+        const transResp = await ai.models.generateContent({
+            model: 'gemini-flash-latest',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: 'audio/webm', data: base64Audio } },
+                    { text: "Transcribe this audio verbatim. Output only the text." }
+                ]
+            }
         });
 
-        const text = transcription.text?.trim();
+        const text = transResp.text?.trim();
 
         if (!isExamActiveRef.current) return;
         if (!text || text.length < 2) {
@@ -816,17 +909,25 @@ function App() {
              5. Sei ein kooperativer Gesprächspartner, nicht nur ein Fragesteller. Mache auch selbst kurze Vorschläge.`;
         }
 
-        // 2. Chat (GPT-4o-mini)
-        const completion = await openaiRef.current.chat.completions.create({
-            model: "gpt-4o-mini", 
-            messages: [
-                { role: "system", content: systemPrompt },
-                ...state.history.map(m => ({ role: m.role, content: m.text })),
-                { role: "user", content: text }
-            ]
+        // 2. Chat (Gemini 3 Flash for Reasoning)
+        // Construct history for Gemini
+        const chatHistory = state.history.map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.text }]
+        }));
+
+        const chatResp = await ai.models.generateContent({
+            model: "gemini-3-flash-preview", 
+            contents: [
+                ...chatHistory,
+                { role: "user", parts: [{ text: text }] }
+            ],
+            config: {
+                systemInstruction: systemPrompt
+            }
         });
 
-        const aiText = completion.choices[0].message.content || "Bitte wiederholen.";
+        const aiText = chatResp.text || "Bitte wiederholen.";
         if (!isExamActiveRef.current) return;
 
         const newHistory: Message[] = [...state.history, { role: 'user', text }, { role: 'assistant', text: aiText }];
@@ -882,37 +983,19 @@ function App() {
   const renderAnnotatedText = (text: string, mistakes: Mistake[]) => {
      if (!text) return { rendered: null, orderedMistakes: [] as Mistake[] };
 
-     // 1. Find all occurrences and map them
-     // We simply find the first occurrence that matches, but we need to be careful with duplicates.
-     // For simplicity and robustness with AI output, we will try to match "original" strings.
-     
-     // Clone mistakes to avoiding mutation if needed, though not strictly necessary here
-     // We want to sort mistakes by their position in text to handle them sequentially
+     // Clone mistakes
      const mappedMistakes = mistakes.map((m, index) => {
-        return { ...m, id: index + 1 }; // Temp ID, will reassign based on text position
+        return { ...m, id: index + 1 };
      });
 
-     // Find positions
-     let searchBuffer = text;
-     let offset = 0;
-     
-     // We need a strategy to locate mistakes. Since one word can appear multiple times, 
-     // we will just find all of them. 
-     // Actually, a safer bet is to assume the AI quotes a unique enough string.
-     // Let's iterate and find. To avoid finding the same index for two identical error words,
-     // we'd need a used-indices map.
-     
      const foundMistakes: Array<{start: number, end: number, mistake: Mistake}> = [];
      
      mappedMistakes.forEach(m => {
-        // Clean original string (trim)
         const searchStr = m.original.trim();
         if(!searchStr) return;
         
-        // Find all indices of this string
         let pos = -1;
         while ((pos = text.indexOf(searchStr, pos + 1)) !== -1) {
-            // Check if this range overlaps with any already found range
             const end = pos + searchStr.length;
             const overlap = foundMistakes.some(fm => 
                 (pos >= fm.start && pos < fm.end) || (end > fm.start && end <= fm.end) || (pos <= fm.start && end >= fm.end)
@@ -920,15 +1003,13 @@ function App() {
             
             if (!overlap) {
                 foundMistakes.push({ start: pos, end: end, mistake: m });
-                break; // Take the first non-overlapping occurrence
+                break; 
             }
         }
      });
 
-     // Sort found mistakes by position
      foundMistakes.sort((a, b) => a.start - b.start);
 
-     // Create list with positions for rendering
      const localizedMistakes = foundMistakes.map((fm, i) => ({
          ...fm.mistake,
          realId: i + 1,
@@ -936,16 +1017,13 @@ function App() {
          end: fm.end
      }));
 
-     // Build React Elements
      const elements: ReactNode[] = [];
      let cursor = 0;
 
      localizedMistakes.forEach((fm, i) => {
-         // Text before
          if (fm.start > cursor) {
              elements.push(<span key={`txt-${i}`}>{text.substring(cursor, fm.start)}</span>);
          }
-         // Error Highlight
          elements.push(
              <span key={`err-${i}`} className="error-highlight">
                  {text.substring(fm.start, fm.end)}
@@ -955,7 +1033,6 @@ function App() {
          cursor = fm.end;
      });
      
-     // Tail text
      if (cursor < text.length) {
          elements.push(<span key="txt-end">{text.substring(cursor)}</span>);
      }

@@ -2,7 +2,7 @@
 
 declare namespace NodeJS {
   interface ProcessEnv {
-    OPENAI_API_KEY: string;
+    API_KEY: string;
     VITE_SUPABASE_URL: string;
     VITE_SUPABASE_KEY: string;
     UNSPLASH_ACCESS_KEY: string;
