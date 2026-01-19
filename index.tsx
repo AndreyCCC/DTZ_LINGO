@@ -479,6 +479,9 @@ function App() {
   const outputAudioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
+    // 🚀 VERSION CHECK: Show this in console to verify new code is running
+    console.log("🚀 STARTING APP - VERSION: EXAM_SESSIONS_V2 - DB TARGET: exam_sessions");
+
     // Check initial session
     if (supabase) {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -554,7 +557,7 @@ function App() {
       const duration = state.startTime ? Math.floor((Date.now() - state.startTime) / 1000) : 0;
       const topic = state.currentTopic || state.writingTask?.topic || state.planningTask?.topic || "Unbekannt";
 
-      console.log("Saving result to DB:", {
+      console.log("Saving result to DB (exam_sessions):", {
           module,
           transcriptContent
       });
