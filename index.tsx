@@ -839,7 +839,7 @@ function App() {
              
              REGELN:
              1. Gehe die Punkte logisch nacheinander durch.
-             2. WICHTIG: Nutze MAXIMAL 2 Sätze/Fragen für einen Punkt. Wenn der Teilnehmer einen Vorschlag gemacht hat oder den Punkt verstanden hat, stimme kurz zu und gehe SOFORT zum nächsten Punkt. Halte dich nicht lange auf.
+             2. WICHTIG: Nutze MAXIMAL 2 Sätze/Fragen für einen Punkt. Wenn der Teilnehmer einen Vorschlag gemacht hat oder den Punkt verstanden hat, stimme kurz zu und gehe SOFORT zum nächsten Punkt. Halte dich nicht lange на.
              3. Wenn der Teilnehmer den Punkt nach deinem zweiten Versuch immer noch nicht klärt, gehe trotzdem weiter zum nächsten Punkt.
              4. Wenn alle Punkte besprochen sind, beende das Gespräch freundlich (z.B. "Gut, dann machen wir das so. Auf Wiedersehen") und sage NICHTS weiter.
              5. Sei ein kooperativer Gesprächspartner, nicht nur ein Fragesteller. Mache auch selbst kurze Vorschläge.`;
@@ -1031,11 +1031,15 @@ function App() {
          }
       }
 
+      // FIX FOR GRADE OVERFLOW
+      const isLongGrade = grading.grade.length > 3;
+      const gradeFontSize = isLongGrade ? '1.8rem' : '3rem';
+
       return (
           <div className="result-content">
               <div className="grade-badge" style={{ borderColor: color, color }}>
                   <span className="label">Niveau</span>
-                  <span className="value">{grading.grade}</span>
+                  <span className="value" style={{ fontSize: gradeFontSize }}>{grading.grade}</span>
               </div>
               
               <div className="result-section"><h3>Begründung</h3><p>{grading.reasoning}</p></div>

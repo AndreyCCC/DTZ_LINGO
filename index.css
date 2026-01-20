@@ -401,8 +401,26 @@ body, html {
 .result-view { text-align: center; width: 100%; padding-bottom: 40px; }
 .result-loading { padding: 40px; color: var(--duo-text-sec); display: flex; flex-direction: column; align-items: center; gap: 20px; }
 .result-content { width: 100%; display: flex; flex-direction: column; gap: 20px; align-items: center; }
-.grade-badge { width: 120px; height: 120px; border: 8px solid var(--duo-green); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; background: var(--duo-card); margin-bottom: 10px; box-shadow: 0 8px 0 rgba(0,0,0,0.2); }
-.grade-badge .value { font-size: 3rem; line-height: 1; }
+
+/* FIXED GRADE BADGE */
+.grade-badge { 
+    width: 140px; 
+    height: 140px; 
+    border: 8px solid var(--duo-green); 
+    border-radius: 50%; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    justify-content: center; 
+    font-weight: bold; 
+    background: var(--duo-card); 
+    margin-bottom: 10px; 
+    box-shadow: 0 8px 0 rgba(0,0,0,0.2); 
+    padding: 10px;
+    text-align: center;
+}
+.grade-badge .value { font-size: 3rem; line-height: 1.1; word-break: break-word; }
+
 .result-section { background: var(--duo-card); border: 2px solid var(--duo-border); border-radius: 16px; padding: 20px; width: 100%; text-align: left; }
 .result-section h3 { margin-top: 0; color: var(--duo-text); font-size: 1.1rem; border-bottom: 1px solid var(--duo-border); padding-bottom: 10px; margin-bottom: 15px; }
 .mistakes-list { display: flex; flex-direction: column; gap: 15px; }
