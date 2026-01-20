@@ -191,9 +191,19 @@ interface GradingResult {
   mistakes: Mistake[];
 }
 
+interface SessionData {
+    id: string;
+    module: string;
+    topic: string;
+    grade: string;
+    created_at: string;
+    feedback_data: GradingResult;
+    transcript: any; // Raw history or user text
+}
+
 interface ExamState {
   module: ExamModule;
-  step: 'landing' | 'auth' | 'menu' | 'exam' | 'result'; 
+  step: 'landing' | 'auth' | 'menu' | 'exam' | 'result' | 'admin'; 
   history: Message[];
   turnCount: number;
   currentImage?: string;
@@ -209,12 +219,15 @@ interface ExamState {
   planningTask?: { topic: string; situation: string; points: string[] };
   // Analytics
   startTime?: number;
+  // View History
+  viewHistoryItem?: SessionData;
 }
 
 interface UserStats {
   totalExams: number;
   lastGrade: string;
   modulesTaken: number;
+  recentSessions: SessionData[];
 }
 
 // --- Error Boundary ---
@@ -420,8 +433,10 @@ const LandingPage = ({ onStart, onLoginClick }: { onStart: () => void, onLoginCl
 // --- App ---
 function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [stats, setStats] = useState<UserStats>({ totalExams: 0, lastGrade: '-', modulesTaken: 0 });
+  const [userRole, setUserRole] = useState<'user' | 'admin'>('user');
+  const [stats, setStats] = useState<UserStats>({ totalExams: 0, lastGrade: '-', modulesTaken: 0, recentSessions: [] });
   const [state, setState] = useState<ExamState>({ module: null, step: 'landing', history: [], turnCount: 0 }); // Start at landing
+  const [adminSessions, setAdminSessions] = useState<SessionData[]>([]);
   
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -449,6 +464,7 @@ function App() {
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session?.user) {
                 setUser(session.user);
+                fetchUserRole(session.user.id);
                 setState(s => ({ ...s, step: 'menu' })); // Auto-login to menu if session exists
                 fetchStats(session.user.id);
             }
@@ -457,11 +473,13 @@ function App() {
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             if (session?.user) {
                 setUser(session.user);
+                fetchUserRole(session.user.id);
                 // If we were in landing or auth, go to menu. Otherwise stay (e.g. during exam)
                 setState(prev => (prev.step === 'auth' || prev.step === 'landing') ? { ...prev, step: 'menu' } : prev);
                 fetchStats(session.user.id);
             } else {
                 setUser(null);
+                setUserRole('user');
                 // On logout, go to landing instead of auth
                 setState(s => ({ ...s, step: 'landing' }));
             }
@@ -492,7 +510,16 @@ function App() {
           created_at: new Date().toISOString()
       } as User;
       setUser(guestUser);
+      setUserRole('user');
       setState(s => ({ ...s, step: 'menu' }));
+  };
+
+  const fetchUserRole = async (userId: string) => {
+      if (!supabase || userId === 'guest') return;
+      const { data } = await supabase.from('profiles').select('role').eq('id', userId).single();
+      if (data) {
+          setUserRole(data.role as 'user' | 'admin');
+      }
   };
 
   const fetchStats = async (userId: string) => {
@@ -503,9 +530,9 @@ function App() {
       // Fetch from new exam_sessions table
       const { data, error } = await supabase
         .from('exam_sessions')
-        .select('grade')
+        .select('*')
         .eq('user_id', userId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false });
 
       if (error) {
           console.error("Error fetching stats:", error);
@@ -513,11 +540,28 @@ function App() {
       
       if (data) {
           console.log("Stats loaded:", data.length);
+          // Convert to SessionData
+          const sessions = data as any[];
+          // Reverse for timeline order if needed, but we ordered by created_at desc
           setStats({
-              totalExams: data.length,
-              lastGrade: data.length > 0 ? data[data.length - 1].grade : '-',
-              modulesTaken: data.length
+              totalExams: sessions.length,
+              lastGrade: sessions.length > 0 ? sessions[0].grade : '-',
+              modulesTaken: sessions.length,
+              recentSessions: sessions.slice(0, 10) // store last 10
           });
+      }
+  };
+
+  const fetchAdminData = async () => {
+      if (!supabase || userRole !== 'admin') return;
+      const { data, error } = await supabase
+        .from('exam_sessions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+        
+      if (!error && data) {
+          setAdminSessions(data as any[]);
       }
   };
 
@@ -819,7 +863,7 @@ function App() {
         }
 
         // --- Custom Logic for System Prompt based on Module ---
-        let systemPrompt = "Du bist ein offizieller DTZ Prüfer (Deutsch-Test für Zuwanderer). WICHTIG: Sprich AUSSCHLIESSLICH DEUTSCH. Antworte NIEMALS in einer anderen Sprache (kein Arabisch, kein Russisch, kein Englisch), auch wenn der Nutzer es tut. Wenn du den Nutzer nicht verstehst, sage 'Bitte sprechen Sie Deutsch'. Antworte kurz (max 2 Sätze). Stelle eine offene Frage passend zum Niveau B1.";
+        let systemPrompt = "Du bist ein offizieller DTZ Prüfer (Deutsch-Test für Zuwanderer). WICHTIG: Sprich AUSSCHLIESSLICH DEUTSCH. Antworte NIEMALS in einer anderen Sprache (kein Arabisch, kein Russisch, kein Englisch), auch wenn der Nutzer es tut. Wenn du den Nutzer не понимаешь, sage 'Bitte sprechen Sie Deutsch'. Antworte kurz (max 2 Sätze). Stelle eine offene Frage passend zum Niveau B1.";
         
         const isFinalTurn = (state.module !== 'planung' && state.turnCount >= 2) || (state.module === 'planung' && state.turnCount > 12); 
 
@@ -1013,7 +1057,7 @@ function App() {
   };
 
   // --- Views ---
-  const ResultView = ({ grading, userText, module }: { grading?: GradingResult, userText?: string, module: ExamModule }) => {
+  const ResultView = ({ grading, userText, module, onClose }: { grading?: GradingResult, userText?: string, module: ExamModule | string, onClose?: () => void }) => {
       if (!grading) return <div className="result-loading"><ThinkingIcon /><p>Auswertung läuft...</p></div>;
       
       const color = grading.grade === 'B1' ? '#58CC02' : grading.grade === 'A2' ? '#FFC800' : '#FF4B4B';
@@ -1037,6 +1081,9 @@ function App() {
 
       return (
           <div className="result-content">
+              {onClose && (
+                  <button onClick={onClose} style={{position:'absolute', top: 0, right: 0, padding:'10px', background:'transparent', border:'none', color:'white', cursor:'pointer'}}>❌</button>
+              )}
               <div className="grade-badge" style={{ borderColor: color, color }}>
                   <span className="label">Niveau</span>
                   <span className="value" style={{ fontSize: gradeFontSize }}>{grading.grade}</span>
@@ -1082,6 +1129,62 @@ function App() {
       );
   };
 
+  const AdminView = () => {
+      useEffect(() => { fetchAdminData(); }, []);
+
+      return (
+          <div className="admin-view">
+              <h2>Admin Dashboard</h2>
+              <div className="admin-stats">
+                  <div className="admin-stat-card">
+                      <span className="admin-stat-num">{adminSessions.length}</span>
+                      <span>Prüfungen total</span>
+                  </div>
+                   <div className="admin-stat-card">
+                      <span className="admin-stat-num">{adminSessions.filter(s => s.grade === 'B1').length}</span>
+                      <span>B1 Bestanden</span>
+                  </div>
+              </div>
+
+              <h3>Letzte Aktivitäten</h3>
+              <div className="admin-table-container">
+                  <table className="admin-table">
+                      <thead>
+                          <tr>
+                              <th>Zeit</th>
+                              <th>User ID</th>
+                              <th>Modul</th>
+                              <th>Note</th>
+                              <th>Aktion</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {adminSessions.map(s => (
+                              <tr key={s.id}>
+                                  <td>{new Date(s.created_at).toLocaleDateString()} {new Date(s.created_at).toLocaleTimeString().slice(0,5)}</td>
+                                  <td><span className="user-pill">{s.id.slice(0,8)}...</span></td>
+                                  <td>{s.module}</td>
+                                  <td style={{color: s.grade === 'B1' ? '#58CC02' : '#FF4B4B', fontWeight: 'bold'}}>{s.grade}</td>
+                                  <td>
+                                      <button 
+                                        onClick={() => setState(prev => ({ ...prev, viewHistoryItem: s }))}
+                                        style={{background: 'transparent', border:'1px solid #37464F', color:'white', padding:'4px 8px', borderRadius:'6px', cursor:'pointer'}}
+                                      >
+                                          View
+                                      </button>
+                                  </td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+              <button className="primary-btn" style={{marginTop:'20px'}} onClick={() => setState(prev => ({...prev, step: 'menu'}))}>
+                  Zurück zum Menu
+              </button>
+          </div>
+      );
+  };
+
   return (
     <div className="dtz-app">
       <DottedGlowBackground />
@@ -1106,8 +1209,8 @@ function App() {
         </>
       )}
 
-      {/* MAIN APP CONTENT (Menu, Exam, Result) */}
-      {(state.step === 'menu' || state.step === 'exam' || state.step === 'result') && (
+      {/* MAIN APP CONTENT (Menu, Exam, Result, Admin) */}
+      {(state.step === 'menu' || state.step === 'exam' || state.step === 'result' || state.step === 'admin') && (
         <>
         <header className="dtz-header">
             {state.step !== 'menu' && <button className="back-btn" onClick={stopExam}><ArrowLeftIcon /></button>}
@@ -1118,8 +1221,13 @@ function App() {
                     <div className="progress-bar" style={{ width: state.step === 'exam' ? `${(state.turnCount / 2) * 100}%` : '100%' }}></div>
                 )}
             </div>
+            
+            {userRole === 'admin' && state.step !== 'admin' && (
+                <button className="admin-badge" onClick={() => setState(s => ({...s, step: 'admin'}))}>ADMIN PANEL</button>
+            )}
+
             {state.step === 'exam' ? <button className="finish-btn" onClick={stopExam}>ABBRUCH</button> : 
-                (user && <button className="finish-btn" onClick={() => { if(user.id === 'guest') { setUser(null); setState(s=>({...s, step:'landing'})); } else { supabase?.auth.signOut(); } }}>LOGOUT</button>)}
+                (user && <button className="finish-btn" onClick={() => { if(user.id === 'guest') { setUser(null); setUserRole('user'); setState(s=>({...s, step:'landing'})); } else { supabase?.auth.signOut(); } }}>LOGOUT</button>)}
         </header>
 
         <main className="dtz-main">
@@ -1128,7 +1236,8 @@ function App() {
             {state.step === 'menu' && (
             <div className="menu-view">
                 <div className="welcome">
-                    <div className="avatar-placeholder">{stats.lastGrade === '-' ? <SparklesIcon /> : stats.lastGrade}</div>
+                    {/* Fixed dynamic font size for avatar */}
+                    <div className="avatar-placeholder" style={{ fontSize: stats.lastGrade.length > 3 ? '1.2rem' : '2.5rem' }}>{stats.lastGrade === '-' ? <SparklesIcon /> : stats.lastGrade}</div>
                     <h1>Hallo, {user?.email ? user.email.split('@')[0] : 'Gast'}</h1>
                     <div className="stats-row">
                         <div className="stat-pill">📝 {stats.totalExams} Prüfungen</div>
@@ -1160,12 +1269,37 @@ function App() {
                     </button>
                 ))}
                 </div>
+
+                {/* USER HISTORY SECTION */}
+                {stats.recentSessions.length > 0 && (
+                    <div className="history-section">
+                        <h3>Deine letzten Prüfungen</h3>
+                        <div className="history-list">
+                            {stats.recentSessions.map((session) => (
+                                <div key={session.id} className="history-card" onClick={() => setState(prev => ({ ...prev, viewHistoryItem: session }))}>
+                                    <div className="history-info">
+                                        <h4>{session.module === 'vorstellung' ? 'Sich vorstellen' : session.module === 'bild' ? 'Bildbeschreibung' : session.module === 'planung' ? 'Planung' : 'Schreiben'}</h4>
+                                        <div className="history-date">{new Date(session.created_at).toLocaleDateString()} • {session.topic}</div>
+                                    </div>
+                                    <div className="history-grade" style={{
+                                        color: session.grade === 'B1' ? '#58CC02' : session.grade === 'A2' ? '#FFC800' : '#FF4B4B',
+                                        border: `1px solid ${session.grade === 'B1' ? '#58CC02' : session.grade === 'A2' ? '#FFC800' : '#FF4B4B'}`
+                                    }}>
+                                        {session.grade}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 
                 <div style={{marginTop: '40px', color: '#37464F', fontSize: '0.8rem'}}>
-                    App Version: 5.1 (UI FIXES)
+                    App Version: 5.2 (DASHBOARDS)
                 </div>
             </div>
             )}
+
+            {state.step === 'admin' && <AdminView />}
 
             {state.step === 'exam' && (
                 <>
@@ -1253,6 +1387,25 @@ function App() {
                 <button className="primary-btn" style={{marginTop:'20px'}} onClick={() => setState({ ...state, step: 'menu', history: [], turnCount: 0 })}>MENU</button>
             </div>
             )}
+
+            {/* HISTORY OVERLAY (Reusing ResultView) */}
+            {state.viewHistoryItem && (
+                <div style={{position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.9)', zIndex: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', overflowY: 'auto'}}>
+                    <div style={{maxWidth: '800px', width: '100%', position: 'relative'}}>
+                        <ResultView 
+                            grading={state.viewHistoryItem.feedback_data} 
+                            module={state.viewHistoryItem.module} 
+                            userText={
+                                state.viewHistoryItem.module === 'schreiben' && Array.isArray(state.viewHistoryItem.transcript) && state.viewHistoryItem.transcript[0]?.text
+                                ? state.viewHistoryItem.transcript[0].text 
+                                : undefined
+                            }
+                            onClose={() => setState(prev => ({ ...prev, viewHistoryItem: undefined }))}
+                        />
+                    </div>
+                </div>
+            )}
+
         </main>
         </>
       )}
