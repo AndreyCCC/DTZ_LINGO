@@ -435,7 +435,7 @@ function App() {
 
   useEffect(() => {
     // 🚀 VERSION CHECK: Show this in console to verify new code is running
-    console.log("🚀 STARTING APP - VERSION: OPENAI_KEY_DEBUG");
+    console.log("🚀 STARTING APP - VERSION: OPENAI_PROMPT_FIX");
     
     // Debug API Key presence (safe check)
     if (process.env.API_KEY && process.env.API_KEY.length > 10) {
@@ -773,7 +773,7 @@ function App() {
             model: "gpt-4o-mini",
             response_format: { type: "json_object" },
             messages: [
-                { role: "system", content: systemPrompt + "\nGib das Ergebnis als JSON im Format {grade, reasoning, tips: [], mistakes: [{original, correction, explanation}]} zurück." },
+                { role: "system", content: systemPrompt + "\n\nWICHTIG: Gib das Ergebnis als JSON im Format {grade, reasoning, tips: [], mistakes: [{original, correction, explanation}]} zurück. Das Feld 'grade' MUSS exakt einer dieser Strings sein: 'A1', 'A2', 'B1' oder 'Unter A1'. Gib KEINE Schulnote (wie 1, 2, 3) zurück." },
                 { role: "user", content: userContent }
             ]
         });
@@ -819,21 +819,21 @@ function App() {
         }
 
         // --- Custom Logic for System Prompt based on Module ---
-        let systemPrompt = "Du bist DTZ Prüfer. Antworte kurz (max 2 Sätze). Stelle eine Frage.";
+        let systemPrompt = "Du bist ein offizieller DTZ Prüfer (Deutsch-Test für Zuwanderer). WICHTIG: Sprich AUSSCHLIESSLICH DEUTSCH. Antworte NIEMALS in einer anderen Sprache (kein Arabisch, kein Russisch, kein Englisch), auch wenn der Nutzer es tut. Wenn du den Nutzer nicht verstehst, sage 'Bitte sprechen Sie Deutsch'. Antworte kurz (max 2 Sätze). Stelle eine offene Frage passend zum Niveau B1.";
         
         const isFinalTurn = (state.module !== 'planung' && state.turnCount >= 2) || (state.module === 'planung' && state.turnCount > 12); 
 
         if (isFinalTurn) {
-             systemPrompt = "Du bist DTZ Prüfer. Der Teil ist beendet. Reagiere kurz und freundlich auf das Gesagte. Sage dann exakt: 'Danke, wir berechnen jetzt Ihre Punkte.' Stelle KEINE neuen Fragen.";
+             systemPrompt = "Du bist DTZ Prüfer. Der Teil ist beendet. Antworte AUSSCHLIESSLICH DEUTSCH. Reagiere kurz und freundlich auf das Gesagte. Sage dann exakt: 'Danke, wir berechnen jetzt Ihre Punkte.' Stelle KEINE neuen Fragen.";
         } else if (state.module === 'bild') {
             if (state.turnCount === 0) {
-              systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Der Teilnehmer hat das Bild beschrieben. Stelle nun EINE konkrete Frage zu einem Detail, das man auf einem Bild zum Thema "${state.currentTopic}" sehen könnte.`;
+              systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Sprich NUR DEUTSCH. Der Teilnehmer hat das Bild beschrieben. Stelle nun EINE konkrete Frage zu einem Detail, das man auf einem Bild zum Thema "${state.currentTopic}" sehen könnte.`;
             } else if (state.turnCount === 1) {
-              systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Stelle nun EINE Frage zu den persönlichen Erfahrungen des Teilnehmers mit dem Thema "${state.currentTopic}".`;
+              systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Sprich NUR DEUTSCH. Stelle nun EINE Frage zu den persönlichen Erfahrungen des Teilnehmers mit dem Thema "${state.currentTopic}".`;
             }
         } else if (state.module === 'planung' && state.planningTask) {
              // STRICT PLANNING PROMPT
-             systemPrompt = `Du bist Prüfer beim DTZ 'Gemeinsam etwas planen'.
+             systemPrompt = `Du bist Prüfer beim DTZ 'Gemeinsam etwas planen'. Sprich NUR DEUTSCH.
              Situation: ${state.planningTask.situation}
              Punkte die besprochen werden müssen: ${state.planningTask.points.join(', ')}.
              
@@ -1139,7 +1139,7 @@ function App() {
                 </div>
                 
                 <div style={{marginTop: '40px', color: '#37464F', fontSize: '0.8rem'}}>
-                    App Version: 3.2 (OPENAI RESTORED)
+                    App Version: 5.0 (OPENAI RESTORED)
                 </div>
             </div>
             )}

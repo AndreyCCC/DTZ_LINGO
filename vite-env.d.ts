@@ -1,5 +1,4 @@
-/// <reference types="vite/client" />
-
+// Removed reference to vite/client to fix type error
 declare namespace NodeJS {
   interface ProcessEnv {
     API_KEY: string;
