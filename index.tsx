@@ -827,7 +827,7 @@ function App() {
              systemPrompt = "Du bist DTZ Prüfer. Der Teil ist beendet. Antworte AUSSCHLIESSLICH DEUTSCH. Reagiere kurz und freundlich auf das Gesagte. Sage dann exakt: 'Danke, wir berechnen jetzt Ihre Punkte.' Stelle KEINE neuen Fragen.";
         } else if (state.module === 'bild') {
             if (state.turnCount === 0) {
-              systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Sprich NUR DEUTSCH. Der Teilnehmer hat das Bild beschrieben. Stelle nun EINE konkrete Frage zu einem Detail, das man auf einem Bild zum Thema "${state.currentTopic}" sehen könnte.`;
+              systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Sprich NUR DEUTSCH. Der Teilnehmer hat das Bild beschrieben. Stelle nun EINE konkrete Frage zu einem Detail, das man на einem Bild zum Thema "${state.currentTopic}" sehen könnte.`;
             } else if (state.turnCount === 1) {
               systemPrompt = `Du bist DTZ Prüfer (Teil 2: Bildbeschreibung, Thema: ${state.currentTopic}). Sprich NUR DEUTSCH. Stelle nun EINE Frage zu den persönlichen Erfahrungen des Teilnehmers mit dem Thema "${state.currentTopic}".`;
             }
@@ -941,10 +941,11 @@ function App() {
      const foundMistakes: Array<{start: number, end: number, mistake: Mistake}> = [];
      
      mappedMistakes.forEach(m => {
-        const searchStr = m.original.trim();
+        let searchStr = m.original.trim();
         if(!searchStr) return;
         
         let pos = -1;
+        // Search
         while ((pos = text.indexOf(searchStr, pos + 1)) !== -1) {
             const end = pos + searchStr.length;
             const overlap = foundMistakes.some(fm => 
@@ -954,6 +955,24 @@ function App() {
             if (!overlap) {
                 foundMistakes.push({ start: pos, end: end, mistake: m });
                 break; 
+            }
+        }
+        
+        // Fallback: Case-insensitive search if strict failed
+        if (pos === -1) {
+            const lowerText = text.toLowerCase();
+            const lowerSearch = searchStr.toLowerCase();
+            pos = -1;
+             while ((pos = lowerText.indexOf(lowerSearch, pos + 1)) !== -1) {
+                const end = pos + searchStr.length;
+                const overlap = foundMistakes.some(fm => 
+                    (pos >= fm.start && pos < fm.end) || (end > fm.start && end <= fm.end) || (pos <= fm.start && end >= fm.end)
+                );
+                
+                if (!overlap) {
+                    foundMistakes.push({ start: pos, end: end, mistake: m });
+                    break; 
+                }
             }
         }
      });
@@ -1139,7 +1158,7 @@ function App() {
                 </div>
                 
                 <div style={{marginTop: '40px', color: '#37464F', fontSize: '0.8rem'}}>
-                    App Version: 5.0 (OPENAI RESTORED)
+                    App Version: 5.1 (UI FIXES)
                 </div>
             </div>
             )}
