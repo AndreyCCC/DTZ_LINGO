@@ -1390,8 +1390,14 @@ function App() {
 
             {/* HISTORY OVERLAY (Reusing ResultView) */}
             {state.viewHistoryItem && (
-                <div style={{position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.9)', zIndex: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', overflowY: 'auto'}}>
-                    <div style={{maxWidth: '800px', width: '100%', position: 'relative'}}>
+                <div className="history-modal-overlay">
+                    <button 
+                        className="modal-close-btn"
+                        onClick={() => setState(prev => ({ ...prev, viewHistoryItem: undefined }))}
+                    >
+                        ✕
+                    </button>
+                    <div className="history-modal-content">
                         <ResultView 
                             grading={state.viewHistoryItem.feedback_data} 
                             module={state.viewHistoryItem.module} 
@@ -1400,7 +1406,6 @@ function App() {
                                 ? state.viewHistoryItem.transcript[0].text 
                                 : undefined
                             }
-                            onClose={() => setState(prev => ({ ...prev, viewHistoryItem: undefined }))}
                         />
                     </div>
                 </div>

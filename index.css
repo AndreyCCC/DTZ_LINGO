@@ -421,6 +421,57 @@ body, html {
     font-size: 0.9rem;
 }
 
+/* MODAL STYLES */
+.history-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(19, 31, 36, 0.95);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start; /* Important for scrolling long content */
+    overflow-y: auto; /* Enable vertical scrolling */
+    padding: 60px 20px 40px; /* Top padding for close button space */
+    backdrop-filter: blur(5px);
+}
+
+.modal-close-btn {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1001;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--duo-card);
+    border: 2px solid var(--duo-border);
+    color: var(--duo-text);
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+.modal-close-btn:hover {
+    background: var(--duo-red);
+    border-color: var(--duo-red);
+    transform: rotate(90deg);
+}
+
+.history-modal-content {
+    width: 100%;
+    max-width: 800px;
+    position: relative;
+    /* Let height grow naturally */
+    padding-bottom: 40px;
+}
+
 .module-grid { display: flex; flex-direction: column; gap: 12px; width: 100%; }
 .module-card { background: var(--duo-card); border: 2px solid var(--duo-border); border-bottom-width: 4px; border-radius: 16px; padding: 20px; display: flex; align-items: center; gap: 15px; cursor: pointer; transition: all 0.1s; text-align: left; width: 100%; color: white; }
 .module-card:hover:not(:disabled) { background: #263840; }
