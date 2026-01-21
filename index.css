@@ -421,55 +421,53 @@ body, html {
     font-size: 0.9rem;
 }
 
-/* MODAL STYLES */
+/* MODAL STYLES REVISED - FIXED OVERFLOW & CLOSE BTN */
 .history-modal-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(19, 31, 36, 0.95);
-    z-index: 1000;
-    display: flex;
-    justify-content: center;
-    align-items: flex-start; /* Important for scrolling long content */
-    overflow-y: auto; /* Enable vertical scrolling */
-    padding: 60px 20px 40px; /* Top padding for close button space */
-    backdrop-filter: blur(5px);
+    background: rgba(19, 31, 36, 0.98); /* Solid dark background to prevent distraction */
+    z-index: 2000;
+    overflow-y: auto; /* Enable vertical scrolling for the whole overlay */
+    -webkit-overflow-scrolling: touch;
+    display: block; /* Ensure block layout for scrolling */
 }
 
 .modal-close-btn {
-    position: fixed;
+    position: fixed; /* Stays fixed relative to viewport */
     top: 20px;
     right: 20px;
-    z-index: 1001;
-    width: 40px;
-    height: 40px;
+    z-index: 2005; /* Above content */
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     background: var(--duo-card);
     border: 2px solid var(--duo-border);
     color: var(--duo-text);
-    font-size: 1.2rem;
+    font-size: 1.5rem;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.2s;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    line-height: 1;
 }
 
 .modal-close-btn:hover {
     background: var(--duo-red);
     border-color: var(--duo-red);
-    transform: rotate(90deg);
+    transform: scale(1.1);
 }
 
 .history-modal-content {
     width: 100%;
     max-width: 800px;
+    margin: 80px auto 40px auto; /* 80px top margin ensures content starts below the fixed close button */
+    padding: 0 20px;
     position: relative;
-    /* Let height grow naturally */
-    padding-bottom: 40px;
 }
 
 .module-grid { display: flex; flex-direction: column; gap: 12px; width: 100%; }
