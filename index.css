@@ -11,6 +11,7 @@
     --duo-text-sec: #AFBCC4;
     --duo-red: #FF4B4B;
     --duo-purple: #9c27b0;
+    --duo-gold: #FFC800;
 }
 
 /* Global Reset & Box Sizing */
@@ -338,6 +339,22 @@ body, html {
     border: 1px solid rgba(255,255,255,0.3);
 }
 
+.profile-btn-header {
+    background: transparent;
+    color: var(--duo-blue);
+    border: 2px solid var(--duo-blue);
+    font-size: 0.75rem;
+    padding: 6px 12px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    font-weight: bold;
+    cursor: pointer;
+    margin-left: auto; /* Push to right if alone */
+}
+.profile-btn-header:hover {
+    background: rgba(28, 176, 246, 0.1);
+}
+
 .finish-btn { background: transparent; border: 2px solid var(--duo-border); color: var(--duo-text-sec); font-weight: bold; font-size: 0.75rem; padding: 6px 12px; border-radius: 10px; cursor: pointer; text-transform: uppercase; }
 .stats-row { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
 .stat-pill { background: rgba(28, 176, 246, 0.15); color: var(--duo-blue); padding: 5px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; white-space: nowrap; margin-bottom: 5px; }
@@ -433,6 +450,85 @@ body, html {
     padding: 4px 10px;
     border-radius: 8px;
     font-size: 0.9rem;
+}
+
+/* User Profile Styles */
+.profile-view {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.account-card {
+    background: linear-gradient(135deg, var(--duo-card) 0%, #263840 100%);
+    border: 2px solid var(--duo-border);
+    border-radius: 16px;
+    padding: 25px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.account-card.premium-glow {
+    border-color: var(--duo-gold);
+    box-shadow: 0 0 20px rgba(255, 200, 0, 0.1);
+}
+
+.account-status-badge {
+    background: #37464F;
+    color: var(--duo-text-sec);
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+
+.account-card.premium-glow .account-status-badge {
+    background: var(--duo-gold);
+    color: #000;
+}
+
+.account-card h2 {
+    margin: 5px 0 15px;
+    font-size: 1.5rem;
+}
+
+.premium-btn {
+    background: var(--duo-gold);
+    color: black;
+    border: none;
+    border-bottom: 4px solid #cc9a00;
+    padding: 12px 30px;
+    border-radius: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    text-transform: uppercase;
+    font-size: 0.9rem;
+    width: 100%;
+    max-width: 250px;
+    transition: transform 0.1s;
+}
+
+.premium-btn:active {
+    transform: translateY(2px);
+    border-bottom-width: 2px;
+}
+
+.category-header {
+    color: var(--duo-blue);
+    font-size: 1.1rem;
+    font-weight: bold;
+    margin-top: 15px;
+    margin-bottom: 10px;
+    padding-left: 5px;
+    border-bottom: 1px solid var(--duo-border);
+    padding-bottom: 5px;
 }
 
 /* MODAL STYLES REFACTORED (FLEXBOX) */
