@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, Component, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
+import { createPortal } from 'react-dom'; // Import createPortal
 import OpenAI from "openai";
 import { User } from '@supabase/supabase-js';
 import DottedGlowBackground from './components/DottedGlowBackground';
@@ -855,7 +856,7 @@ function App() {
 
         if (!isExamActiveRef.current) return;
         if (!text || text.length < 2) {
-             const fallback = "Ich habe Sie nicht verstanden. Bitte wiederholen.";
+             const fallback = "Ich habe Sie не verstanden. Bitte wiederholen.";
              setState(prev => ({ ...prev, history: [...prev.history, { role: 'user', text: "..." }, { role: 'assistant', text: fallback }] }));
              await speakText(fallback);
              setIsProcessing(false);
@@ -1381,15 +1382,8 @@ function App() {
                 </>
             )}
 
-            {state.step === 'result' && (
-            <div className="result-view">
-                <ResultView grading={state.grading} userText={state.writingInput} module={state.module} />
-                <button className="primary-btn" style={{marginTop:'20px'}} onClick={() => setState({ ...state, step: 'menu', history: [], turnCount: 0 })}>MENU</button>
-            </div>
-            )}
-
-            {/* HISTORY OVERLAY (Reusing ResultView) */}
-            {state.viewHistoryItem && (
+            {/* HISTORY OVERLAY (Using Portal) */}
+            {state.viewHistoryItem && createPortal(
                 <div className="history-modal-overlay">
                     <div className="history-modal-header">
                          <span className="history-modal-title">
@@ -1413,9 +1407,14 @@ function App() {
                                     : undefined
                                 }
                             />
+                            {/* Redundant close button at bottom */}
+                             <button className="secondary-btn" style={{marginTop: '30px', borderColor: '#FF4B4B', color: '#FF4B4B'}} onClick={() => setState(prev => ({ ...prev, viewHistoryItem: undefined }))}>
+                                Schließen
+                            </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
         </main>
