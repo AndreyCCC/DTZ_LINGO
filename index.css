@@ -18,6 +18,20 @@
     box-sizing: border-box;
 }
 
+/* HIDE SCROLLBARS GLOBALLY */
+/* For Webkit (Chrome, Safari) */
+*::-webkit-scrollbar {
+    width: 0px;
+    height: 0px;
+    display: none;
+}
+
+/* For Firefox, IE, Edge */
+* {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+}
+
 body, html { 
     margin: 0; 
     padding: 0; 
