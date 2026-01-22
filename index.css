@@ -421,53 +421,67 @@ body, html {
     font-size: 0.9rem;
 }
 
-/* MODAL STYLES REVISED - FIXED OVERFLOW & CLOSE BTN */
+/* MODAL STYLES REFACTORED (FLEXBOX) */
 .history-modal-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(19, 31, 36, 0.98); /* Solid dark background to prevent distraction */
-    z-index: 2000;
-    overflow-y: auto; /* Enable vertical scrolling for the whole overlay */
-    -webkit-overflow-scrolling: touch;
-    display: block; /* Ensure block layout for scrolling */
+    background: #131F24; /* Solid background */
+    z-index: 3000;
+    display: flex;
+    flex-direction: column; /* Stack header and content vertically */
+}
+
+.history-modal-header {
+    flex: 0 0 60px; /* Fixed height for header */
+    background: var(--duo-card);
+    border-bottom: 2px solid var(--duo-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 3010;
+}
+
+.history-modal-title {
+    font-weight: bold;
+    color: var(--duo-text-sec);
+    font-size: 0.9rem;
+    text-transform: uppercase;
 }
 
 .modal-close-btn {
-    position: fixed; /* Stays fixed relative to viewport */
-    top: 20px;
-    right: 20px;
-    z-index: 2005; /* Above content */
-    width: 44px;
-    height: 44px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
-    background: var(--duo-card);
-    border: 2px solid var(--duo-border);
-    color: var(--duo-text);
-    font-size: 1.5rem;
-    cursor: pointer;
+    font-size: 1.2rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-    line-height: 1;
+    cursor: pointer;
+    transition: background 0.2s;
 }
 
 .modal-close-btn:hover {
     background: var(--duo-red);
-    border-color: var(--duo-red);
-    transform: scale(1.1);
+}
+
+.history-modal-scroll-area {
+    flex: 1; /* Takes all remaining space */
+    overflow-y: auto; /* Enables scrolling ONLY in this area */
+    padding: 20px 0;
+    width: 100%;
 }
 
 .history-modal-content {
-    width: 100%;
     max-width: 800px;
-    margin: 80px auto 40px auto; /* 80px top margin ensures content starts below the fixed close button */
-    padding: 0 20px;
-    position: relative;
+    margin: 0 auto;
+    padding: 0 20px 40px; /* Bottom padding for scroll space */
 }
 
 .module-grid { display: flex; flex-direction: column; gap: 12px; width: 100%; }

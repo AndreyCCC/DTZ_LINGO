@@ -1391,22 +1391,29 @@ function App() {
             {/* HISTORY OVERLAY (Reusing ResultView) */}
             {state.viewHistoryItem && (
                 <div className="history-modal-overlay">
-                    <button 
-                        className="modal-close-btn"
-                        onClick={() => setState(prev => ({ ...prev, viewHistoryItem: undefined }))}
-                    >
-                        ✕
-                    </button>
-                    <div className="history-modal-content">
-                        <ResultView 
-                            grading={state.viewHistoryItem.feedback_data} 
-                            module={state.viewHistoryItem.module} 
-                            userText={
-                                state.viewHistoryItem.module === 'schreiben' && Array.isArray(state.viewHistoryItem.transcript) && state.viewHistoryItem.transcript[0]?.text
-                                ? state.viewHistoryItem.transcript[0].text 
-                                : undefined
-                            }
-                        />
+                    <div className="history-modal-header">
+                         <span className="history-modal-title">
+                             {state.viewHistoryItem.module.toUpperCase()} - {new Date(state.viewHistoryItem.created_at).toLocaleDateString()}
+                         </span>
+                         <button 
+                             className="modal-close-btn"
+                             onClick={() => setState(prev => ({ ...prev, viewHistoryItem: undefined }))}
+                         >
+                             ✕
+                         </button>
+                    </div>
+                    <div className="history-modal-scroll-area">
+                        <div className="history-modal-content">
+                            <ResultView 
+                                grading={state.viewHistoryItem.feedback_data} 
+                                module={state.viewHistoryItem.module} 
+                                userText={
+                                    state.viewHistoryItem.module === 'schreiben' && Array.isArray(state.viewHistoryItem.transcript) && state.viewHistoryItem.transcript[0]?.text
+                                    ? state.viewHistoryItem.transcript[0].text 
+                                    : undefined
+                                }
+                            />
+                        </div>
                     </div>
                 </div>
             )}
