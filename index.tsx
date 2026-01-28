@@ -452,7 +452,7 @@ function App() {
 
   useEffect(() => {
     // 🚀 VERSION CHECK: Show this in console to verify new code is running
-    console.log("🚀 STARTING APP - VERSION: USER_PROFILE_V1");
+    console.log("🚀 STARTING APP - VERSION: USER_PROFILE_V2_NAV");
     
     // Debug API Key presence (safe check)
     if (process.env.API_KEY && process.env.API_KEY.length > 10) {
@@ -1231,8 +1231,8 @@ function App() {
                  {speaking.length > 0 ? speaking.map(renderSessionItem) : <p style={{color:'#AFBCC4', fontStyle:'italic', fontSize:'0.9rem'}}>Keine Ergebnisse.</p>}
              </div>
 
-             <button className="secondary-btn" style={{marginTop:'30px'}} onClick={() => setState(prev => ({...prev, step: 'menu'}))}>
-                 Zurück zum Menu
+             <button className="primary-btn" style={{marginTop:'30px'}} onClick={() => setState(prev => ({...prev, step: 'menu'}))}>
+                 ZUM HAUPTMENÜ
              </button>
         </div>
     );
@@ -1287,6 +1287,10 @@ function App() {
 
                 {state.step === 'menu' && (
                     <button className="profile-btn-header" onClick={() => setState(s => ({...s, step: 'profile'}))}>PROFIL</button>
+                )}
+
+                {state.step === 'profile' && (
+                    <button className="profile-btn-header" onClick={() => setState(s => ({...s, step: 'menu'}))}>MENU</button>
                 )}
 
                 {state.step === 'exam' ? <button className="finish-btn" onClick={stopExam}>ABBRUCH</button> : 
